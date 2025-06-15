@@ -1,27 +1,119 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <link rel="manifest" href="manifest.json" />
-  <link rel="icon" href="icon-192.png" />
-  <meta name="theme-color" content="#000000" />
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js').then(() => {
-        console.log("✅ ServiceWorker registered");
-      });
+// shark-pwa/script.js（全量改修済み）
+
+let video = null;
+let canvas = null;
+let ctx = null;
+let model = null;
+let initialized = false;
+
+function showError(message) {
+  const status = document.getElementById('status');
+  status.innerHTML = `❌ <span style="color: red">${message}</span>`;
+}
+
+function showReady() {
+  const status = document.getElementById('status');
+  status.innerHTML = `✅ <span style="color: lime">Ready</span>`;
+}
+
+function vibrate() {
+  if ("vibrate" in navigator) {
+    navigator.vibrate(300);
+  }
+}
+
+// ONNXモデル読み込み
+async function loadModel() {
+  try {
+    model = await ort.InferenceSession.create("./best.onnx");
+    console.log("✅ Model loaded");
+  } catch (e) {
+    showError("Model load failed: " + e.message);
+  }
+}
+
+async function initCamera() {
+  video = document.getElementById("video");
+  canvas = document.getElementById("canvas");
+  ctx = canvas.getContext("2d");
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showError("Camera not supported on this device");
+    return;
+  }
+
+  try {
+    await loadModel();
+
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+    video.srcObject = stream;
+    await video.play();
+
+    video.width = window.innerWidth;
+    video.height = window.innerHeight;
+    canvas.width = video.width;
+    canvas.height = video.height;
+
+    initialized = true;
+    showReady();
+    detectLoop();
+  } catch (err) {
+    showError("Camera error: " + err.message);
+  }
+}
+
+async function detectLoop() {
+  if (!initialized || !model) return;
+
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  const inputTensor = preprocess(canvas);
+
+  try {
+    const feeds = { images: inputTensor }; // RoboflowのONNXは"images"が多い
+    const output = await model.run(feeds);
+    const boxes = output[Object.keys(output)[0]]; // 最初の出力を取得
+
+    if (boxes && boxes.dims.length > 0) {
+      vibrate();
+      drawBoxes(boxes);
     }
-  </script>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Shark Tooth Detector</title>
-  <link rel="stylesheet" href="style.css" />
-</head>
-<body>
-  <h1>🦈 Shark Tooth Detector</h1>
-  <video id="video" autoplay playsinline muted></video>
-  <canvas id="canvas"></canvas>
-  <div id="status">📷 Initializing...</div>
-  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
-  <script src="script.js"></script>
-</body>
-</html>
+  } catch (err) {
+    showError("Detection error: " + err.message);
+  }
+
+  requestAnimationFrame(detectLoop);
+}
+
+// canvasからTensor生成
+function preprocess(canvas) {
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const [w, h] = [224, 224]; // 入力サイズに合わせて
+  const pixels = new Float32Array(w * h * 3);
+  let p = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = ((y * canvas.width) + x) * 4;
+      pixels[p++] = imageData.data[i] / 255.0;
+      pixels[p++] = imageData.data[i + 1] / 255.0;
+      pixels[p++] = imageData.data[i + 2] / 255.0;
+    }
+  }
+  return new ort.Tensor("float32", pixels, [1, 3, h, w]);
+}
+
+// 推論結果描画
+function drawBoxes(tensor) {
+  ctx.strokeStyle = "red";
+  ctx.lineWidth = 2;
+  const data = tensor.data;
+  const count = tensor.dims[0];
+  for (let i = 0; i < count; i++) {
+    const x = data[i * 4 + 0] * canvas.width;
+    const y = data[i * 4 + 1] * canvas.height;
+    const w = data[i * 4 + 2] * canvas.width;
+    const h = data[i * 4 + 3] * canvas.height;
+    ctx.strokeRect(x, y, w, h);
+  }
+}
+
+document.addEventListener("DOMContentLoaded", initCamera);
