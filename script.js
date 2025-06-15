@@ -1,4 +1,4 @@
-// shark-pwa/script.js（YOLO出力暴走防止）
+// shark-pwa/script.js（YOLOv11 後処理済みモデル対応 + 描画安全化）
 
 let video = null;
 let canvas = null;
@@ -8,12 +8,12 @@ let initialized = false;
 
 function showError(message) {
   const status = document.getElementById('status');
-  status.innerHTML = `❌ <span style=\"color: red\">${message}</span>`;
+  status.innerHTML = `❌ <span style="color: red">${message}</span>`;
 }
 
 function showReady() {
   const status = document.getElementById('status');
-  status.innerHTML = `✅ <span style=\"color: lime\">Ready</span>`;
+  status.innerHTML = `✅ <span style="color: lime">Ready</span>`;
 }
 
 function vibrate() {
@@ -115,9 +115,9 @@ function drawBoxes(tensor) {
   ctx.strokeStyle = "red";
   ctx.lineWidth = 2;
 
+  const maxBoxes = Math.min(dims[1], 300);
   let drawn = 0;
 
-  const maxBoxes = Math.min(dims[1], 300); // dims = [1, 300, 6]
   for (let i = 0; i < maxBoxes; i++) {
     const offset = i * 6;
     const x1 = data[offset];
@@ -139,6 +139,5 @@ function drawBoxes(tensor) {
 
   console.log("🟥 Boxes drawn:", drawn);
 }
-
 
 document.addEventListener("DOMContentLoaded", initCamera);
