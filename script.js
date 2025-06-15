@@ -1,177 +1,167 @@
 /*
- * Shark Tooth Detector PWA – script.js (auto-button fallback)
- * - Start Camera ボタンが存在しない場合は動的に生成
- * - Safari のユーザージェスチャを確実に取得
+ * Shark Tooth Detector PWA – script.js (DOMContentLoaded safe)
+ * 1. DOMContentLoaded まで待ってから要素取得
+ * 2. 要素が存在しない場合は警告を出し停止
+ * 3. Start Camera ボタンを確実に表示
  */
 
-// ====== DOM Elements ======
-let startBtn = document.getElementById("start");
-const video = document.getElementById("cam");     // <video id="cam">
-const canvas = document.getElementById("view");   // <canvas id="view">
-const statusLabel = document.getElementById("status");
-const ctx = canvas.getContext("2d");
+window.addEventListener("DOMContentLoaded", () => {
+  // ====== DOM Elements ======
+  const video = document.getElementById("cam");
+  const canvas = document.getElementById("view");
+  const statusLabel = document.getElementById("status");
+  if (!video || !canvas || !statusLabel) {
+    alert("必須の video / canvas / status 要素が見つかりません");
+    return;
+  }
+  const ctx = canvas.getContext("2d");
 
-// 動的に Start ボタンを作成（無ければ）
-if (!startBtn) {
-  startBtn = document.createElement("button");
-  startBtn.id = "start";
-  startBtn.textContent = "Start Camera";
-  Object.assign(startBtn.style, {
-    position: "absolute",
-    top: "50%",
-    left: "50%",
-    transform: "translate(-50%, -50%)",
-    padding: "12px 24px",
-    fontSize: "18px",
-    zIndex: 1000
-  });
-  document.body.appendChild(startBtn);
-}
-
-// video 要素に playsinline / muted を保証
-video.setAttribute("playsinline", "");
-video.setAttribute("muted", "");
-video.autoplay = true;
-
-// ====== Globals ======
-let ortSession = null;
-let initialized = false;
-const scoreThreshold = 0.3;
-const modelInput = 640;
-
-// ====== Camera setup ======
-async function setupCamera() {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: "environment",
-        width: { ideal: 1280 },
-        height: { ideal: 720 }
-      },
-      audio: false
+  // ====== Start Button ======
+  let startBtn = document.getElementById("start");
+  if (!startBtn) {
+    startBtn = document.createElement("button");
+    startBtn.id = "start";
+    startBtn.textContent = "Start Camera";
+    Object.assign(startBtn.style, {
+      position: "absolute",
+      top: "50%",
+      left: "50%",
+      transform: "translate(-50%, -50%)",
+      padding: "12px 24px",
+      fontSize: "18px",
+      zIndex: 1000
     });
-    video.srcObject = stream;
-    await video.play();
-  } catch (err) {
-    console.error("getUserMedia error", err);
-    throw new Error("Camera error: " + err.name + (err.message ? " – " + err.message : ""));
+    document.body.appendChild(startBtn);
   }
 
-  const vw = video.videoWidth;
-  const vh = video.videoHeight;
-  if (!vw || !vh) throw new Error("Video dimensions are 0 – camera failed to start");
-  const ratio = vw / vh;
-  const maxW = window.innerWidth;
-  const maxH = window.innerHeight;
-  if (maxW / maxH > ratio) {
-    canvas.height = maxH;
-    canvas.width = maxH * ratio;
-  } else {
-    canvas.width = maxW;
-    canvas.height = maxW / ratio;
-  }
-}
+  // video 要素に playsinline / muted を保証
+  video.setAttribute("playsinline", "");
+  video.setAttribute("muted", "");
+  video.autoplay = true;
 
-// ====== Model loader ======
-async function loadModel() {
-  statusLabel.textContent = "Loading model…";
-  ortSession = await ort.InferenceSession.create("best.onnx", {
-    executionProviders: ["wasm"],
-    wasm: { numThreads: 1, simd: true }
-  });
-  statusLabel.textContent = "Model loaded";
-}
+  // ====== Globals ======
+  let ortSession = null;
+  let initialized = false;
+  const scoreThreshold = 0.3;
+  const modelInput = 640;
 
-// ====== Pre-processing ======
-function preprocess() {
-  const tempCanvas = preprocess.canvas || document.createElement("canvas");
-  const tempCtx = preprocess.ctx || tempCanvas.getContext("2d");
-  tempCanvas.width = modelInput;
-  tempCanvas.height = modelInput;
-  preprocess.canvas = tempCanvas;
-  preprocess.ctx = tempCtx;
+  // ====== Functions ======
+  async function setupCamera() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+        audio: false
+      });
+      video.srcObject = stream;
+      await video.play();
+    } catch (err) {
+      console.error(err);
+      throw new Error("Camera error: " + err.name);
+    }
 
-  const srcW = video.videoWidth;
-  const srcH = video.videoHeight;
-  const scale = Math.min(modelInput / srcW, modelInput / srcH);
-  const dw = srcW * scale;
-  const dh = srcH * scale;
-  const dx = (modelInput - dw) / 2;
-  const dy = (modelInput - dh) / 2;
-  tempCtx.fillStyle = "black";
-  tempCtx.fillRect(0, 0, modelInput, modelInput);
-  tempCtx.drawImage(video, 0, 0, srcW, srcH, dx, dy, dw, dh);
-
-  const img = tempCtx.getImageData(0, 0, modelInput, modelInput);
-  const float32 = new Float32Array(modelInput * modelInput * 3);
-  let j = 0;
-  for (let i = 0; i < img.data.length; i += 4) {
-    float32[j++] = img.data[i + 2] / 255; // B
-    float32[j++] = img.data[i + 1] / 255; // G
-    float32[j++] = img.data[i] / 255;     // R
-  }
-
-  const transposed = new Float32Array(float32.length);
-  for (let c = 0; c < 3; ++c) {
-    for (let h = 0; h < modelInput; ++h) {
-      for (let w = 0; w < modelInput; ++w) {
-        transposed[c * modelInput * modelInput + h * modelInput + w] =
-          float32[h * modelInput * 3 + w * 3 + c];
-      }
+    // Canvas sizing
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (!vw || !vh) throw new Error("Video dimensions 0");
+    const ratio = vw / vh;
+    const maxW = window.innerWidth;
+    const maxH = window.innerHeight;
+    if (maxW / maxH > ratio) {
+      canvas.height = maxH;
+      canvas.width = maxH * ratio;
+    } else {
+      canvas.width = maxW;
+      canvas.height = maxW / ratio;
     }
   }
-  return new ort.Tensor("float32", transposed, [1, 3, modelInput, modelInput]);
-}
 
-// ====== 推論ループ ======
-async function detectLoop() {
-  if (!initialized) return;
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  const inputTensor = preprocess();
-  const feeds = { images: inputTensor };
-  const output = await ortSession.run(feeds);
-  const preds = output[Object.keys(output)[0]].data;
-
-  const scaleX = canvas.width / modelInput;
-  const scaleY = canvas.height / modelInput;
-  let any = false;
-  for (let i = 0; i < preds.length; i += 6) {
-    const score = preds[i + 4];
-    if (score < scoreThreshold) continue;
-    any = true;
-    const x1 = preds[i] * scaleX;
-    const y1 = preds[i + 1] * scaleY;
-    const x2 = preds[i + 2] * scaleX;
-    const y2 = preds[i + 3] * scaleY;
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = "red";
-    ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-    ctx.fillStyle = "red";
-    ctx.font = "16px sans-serif";
-    ctx.fillText(`Shark ${score.toFixed(2)}`, x1, y1 - 6);
+  async function loadModel() {
+    statusLabel.textContent = "Loading model…";
+    ortSession = await ort.InferenceSession.create("best.onnx", {
+      executionProviders: ["wasm"],
+      wasm: { simd: true }
+    });
+    statusLabel.textContent = "Model loaded";
   }
-  statusLabel.textContent = any ? "Detecting…" : "No tooth";
-  requestAnimationFrame(detectLoop);
-}
 
-// ====== Init ======
-async function init() {
-  try {
-    statusLabel.textContent = "Requesting camera…";
-    await setupCamera();
-    statusLabel.textContent = "Camera OK";
-    await loadModel();
-    initialized = true;
-    statusLabel.textContent = "Ready";
-    detectLoop();
-  } catch (e) {
-    console.error(e);
-    statusLabel.textContent = "⚠️ " + e.message;
+  function preprocess() {
+    const tmp = preprocess.tmp || document.createElement("canvas");
+    const tctx = preprocess.tctx || tmp.getContext("2d");
+    preprocess.tmp = tmp;
+    preprocess.tctx = tctx;
+    tmp.width = modelInput;
+    tmp.height = modelInput;
+
+    const sw = video.videoWidth;
+    const sh = video.videoHeight;
+    const s = Math.min(modelInput / sw, modelInput / sh);
+    const dw = sw * s;
+    const dh = sh * s;
+    const dx = (modelInput - dw) / 2;
+    const dy = (modelInput - dh) / 2;
+    tctx.fillStyle = "black";
+    tctx.fillRect(0, 0, modelInput, modelInput);
+    tctx.drawImage(video, 0, 0, sw, sh, dx, dy, dw, dh);
+
+    const img = tctx.getImageData(0, 0, modelInput, modelInput);
+    const arr = new Float32Array(modelInput * modelInput * 3);
+    let j = 0;
+    for (let i = 0; i < img.data.length; i += 4) {
+      arr[j++] = img.data[i + 2] / 255;
+      arr[j++] = img.data[i + 1] / 255;
+      arr[j++] = img.data[i] / 255;
+    }
+    const chw = new Float32Array(arr.length);
+    for (let c = 0; c < 3; c++)
+      for (let h = 0; h < modelInput; h++)
+        for (let w = 0; w < modelInput; w++)
+          chw[c * modelInput * modelInput + h * modelInput + w] =
+            arr[h * modelInput * 3 + w * 3 + c];
+    return new ort.Tensor("float32", chw, [1, 3, modelInput, modelInput]);
   }
-}
 
-// ====== Start button handler ======
-startBtn.addEventListener("click", () => {
-  startBtn.style.display = "none";
-  init();
+  async function detectLoop() {
+    if (!initialized) return;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const feeds = { images: preprocess() };
+    const out = await ortSession.run(feeds);
+    const d = out[Object.keys(out)[0]].data;
+    const sx = canvas.width / modelInput;
+    const sy = canvas.height / modelInput;
+    let found = false;
+    for (let i = 0; i < d.length; i += 6) {
+      const score = d[i + 4];
+      if (score < scoreThreshold) continue;
+      found = true;
+      const x1 = d[i] * sx;
+      const y1 = d[i + 1] * sy;
+      const x2 = d[i + 2] * sx;
+      const y2 = d[i + 3] * sy;
+      ctx.strokeStyle = "red";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+    }
+    statusLabel.textContent = found ? "Detecting…" : "No tooth";
+    requestAnimationFrame(detectLoop);
+  }
+
+  async function init() {
+    try {
+      statusLabel.textContent = "Requesting camera…";
+      await setupCamera();
+      statusLabel.textContent = "Camera OK";
+      await loadModel();
+      initialized = true;
+      statusLabel.textContent = "Ready";
+      detectLoop();
+    } catch (e) {
+      statusLabel.textContent = "⚠️ " + e.message;
+      console.error(e);
+    }
+  }
+
+  startBtn.addEventListener("click", () => {
+    startBtn.style.display = "none";
+    init();
+  });
 });
