@@ -1,0 +1,37 @@
+body {
+  margin: 0;
+  overflow: hidden;
+  background: black;
+  font-family: sans-serif;
+  color: white;
+  text-align: center;
+}
+
+h1 {
+  position: absolute;
+  top: 0;
+  width: 100vw;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 10px;
+  font-size: 1.5em;
+  z-index: 10;
+}
+
+#video, #canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
+}
+
+#status {
+  position: absolute;
+  bottom: 10px;
+  width: 100vw;
+  text-align: center;
+  font-size: 1.2em;
+  color: white;
+  z-index: 10;
+}
