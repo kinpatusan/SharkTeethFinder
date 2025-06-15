@@ -1,4 +1,4 @@
-// shark-pwa/script.js（alert無効化＆ログのみ表示でフリーズ完全回避）
+// shark-pwa/script.js（修正版：入力サイズを640x640に対応）
 
 let video = null;
 let canvas = null;
@@ -22,6 +22,7 @@ function vibrate() {
   }
 }
 
+// ONNXモデル読み込み
 async function loadModel() {
   try {
     model = await ort.InferenceSession.create("./best.onnx");
@@ -44,16 +45,19 @@ async function initCamera() {
 
   try {
     await loadModel();
+
     const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
     video.srcObject = stream;
     await video.play();
+
     video.width = window.innerWidth;
     video.height = window.innerHeight;
     canvas.width = video.width;
     canvas.height = video.height;
+
     initialized = true;
     showReady();
-    requestAnimationFrame(detectLoop);
+    detectLoop();
   } catch (err) {
     showError("Camera error: " + err.message);
   }
@@ -61,30 +65,32 @@ async function initCamera() {
 
 async function detectLoop() {
   if (!initialized || !model) return;
+
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
   const inputTensor = preprocess(canvas);
 
   try {
-    const feeds = { images: inputTensor };
+    const feeds = { images: inputTensor }; // 入力名は "images"
     const output = await model.run(feeds);
-    const result = output[Object.keys(output)[0]];
-    console.log("Result dims:", result.dims);
-    console.log("Sample data[0~5]:", Array.from(result.data).slice(0, 6).join(", "));
+    const outputNames = Object.keys(output);
+    console.log("Output names:", outputNames);
 
-    if (result && result.dims.length > 0 && result.data.some(v => v !== 0)) {
+    const result = output[outputNames[0]];
+    console.log("Result dims:", result.dims);
+    console.log("Result data:", result.data);
+
+    if (result && result.dims.length > 0) {
       vibrate();
       drawBoxes(result);
-    } else {
-      console.log("🟨 No meaningful detection");
     }
   } catch (err) {
     showError("Detection error: " + err.message);
-    console.error("Detection error detail:", err);
   }
 
   requestAnimationFrame(detectLoop);
 }
 
+// canvasからTensor生成（モデルは 640x640 を要求）
 function preprocess(canvas) {
   const [w, h] = [640, 640];
   const tempCanvas = document.createElement("canvas");
@@ -93,6 +99,7 @@ function preprocess(canvas) {
   const tempCtx = tempCanvas.getContext("2d");
   tempCtx.drawImage(canvas, 0, 0, w, h);
   const imageData = tempCtx.getImageData(0, 0, w, h);
+
   const pixels = new Float32Array(w * h * 3);
   let p = 0;
   for (let i = 0; i < imageData.data.length; i += 4) {
@@ -103,37 +110,19 @@ function preprocess(canvas) {
   return new ort.Tensor("float32", pixels, [1, 3, h, w]);
 }
 
+// 推論結果描画（仮：出力が[batch, 4]でbboxだと仮定）
 function drawBoxes(tensor) {
-  const data = tensor.data;
-  const dims = tensor.dims;
-  if (!data || data.length === 0) return;
-
   ctx.strokeStyle = "red";
   ctx.lineWidth = 2;
-
-  const maxBoxes = Math.min(dims[1], 300);
-  let drawn = 0;
-
-  for (let i = 0; i < maxBoxes; i++) {
-    const offset = i * 6;
-    const x1 = data[offset];
-    const y1 = data[offset + 1];
-    const x2 = data[offset + 2];
-    const y2 = data[offset + 3];
-    const score = data[offset + 4];
-
-    if (!isFinite(x1) || !isFinite(y1) || !isFinite(x2) || !isFinite(y2)) continue;
-    if (score < 0.3) continue;
-
-    const w = x2 - x1;
-    const h = y2 - y1;
-    if (w <= 0 || h <= 0 || w > canvas.width || h > canvas.height) continue;
-
-    ctx.strokeRect(x1, y1, w, h);
-    drawn++;
+  const data = tensor.data;
+  const count = tensor.dims[0];
+  for (let i = 0; i < count; i++) {
+    const x = data[i * 4 + 0] * canvas.width;
+    const y = data[i * 4 + 1] * canvas.height;
+    const w = data[i * 4 + 2] * canvas.width;
+    const h = data[i * 4 + 3] * canvas.height;
+    ctx.strokeRect(x, y, w, h);
   }
-
-  console.log("🟥 Boxes drawn:", drawn);
 }
 
 document.addEventListener("DOMContentLoaded", initCamera);
