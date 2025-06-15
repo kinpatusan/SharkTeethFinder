@@ -1,4 +1,4 @@
-// shark-pwa/script.js（YOLOv11 後処理済みモデル対応 + 描画安全化）
+// shark-pwa/script.js（YOLOv11 後処理済みモデル対応 + 描画安全化 + フリーズ完全対策）
 
 let video = null;
 let canvas = null;
@@ -61,14 +61,11 @@ async function initCamera() {
 
 async function detectLoop() {
   if (!initialized || !model) return;
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  const inputTensor = preprocess(canvas);
-  console.log("✅ Preprocess done");
-
   try {
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const inputTensor = preprocess(canvas);
     const feeds = { images: inputTensor };
     const output = await model.run(feeds);
-    console.log("✅ Model.run executed");
     const outputNames = Object.keys(output);
     if (outputNames.length === 0) {
       showError("No output from model");
@@ -80,9 +77,11 @@ async function detectLoop() {
       alert("dims: " + result.dims + "\ndata[0~5]: " + Array.from(result.data).slice(0, 6).join(", "));
       window.__shown_once = true;
     }
-    if (result && result.dims.length > 0) {
+    if (result && result.dims.length > 0 && result.data.some(v => v !== 0)) {
       vibrate();
       drawBoxes(result);
+    } else {
+      console.log("🟨 No meaningful detection");
     }
   } catch (err) {
     showError("Detection error: " + err.message);
@@ -112,6 +111,8 @@ function preprocess(canvas) {
 function drawBoxes(tensor) {
   const data = tensor.data;
   const dims = tensor.dims;
+  if (!data || data.length === 0) return;
+
   ctx.strokeStyle = "red";
   ctx.lineWidth = 2;
 
@@ -131,7 +132,7 @@ function drawBoxes(tensor) {
 
     const w = x2 - x1;
     const h = y2 - y1;
-    if (w <= 0 || h <= 0) continue;
+    if (w <= 0 || h <= 0 || w > canvas.width || h > canvas.height) continue;
 
     ctx.strokeRect(x1, y1, w, h);
     drawn++;
