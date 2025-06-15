@@ -1,4 +1,4 @@
-// shark-pwa/script.js（修正版：入力サイズを640x640に対応）
+// shark-pwa/script.js（出力形式確認用alert付き）
 
 let video = null;
 let canvas = null;
@@ -8,12 +8,12 @@ let initialized = false;
 
 function showError(message) {
   const status = document.getElementById('status');
-  status.innerHTML = `❌ <span style="color: red">${message}</span>`;
+  status.innerHTML = `❌ <span style=\"color: red\">${message}</span>`;
 }
 
 function showReady() {
   const status = document.getElementById('status');
-  status.innerHTML = `✅ <span style="color: lime">Ready</span>`;
+  status.innerHTML = `✅ <span style=\"color: lime\">Ready</span>`;
 }
 
 function vibrate() {
@@ -78,6 +78,12 @@ async function detectLoop() {
     const result = output[outputNames[0]];
     console.log("Result dims:", result.dims);
     console.log("Result data:", result.data);
+
+    // ✅ 出力形式確認用alert（1回だけ表示）
+    if (!window.__shown_once) {
+      alert("dims: " + result.dims + "\ndata[0~5]: " + Array.from(result.data).slice(0, 6).join(", "));
+      window.__shown_once = true;
+    }
 
     if (result && result.dims.length > 0) {
       vibrate();
