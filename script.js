@@ -1,16 +1,32 @@
 /*
- * Shark Tooth Detector PWA – script.js (camera-permission debug)
- * - 追加: スタートボタンによるユーザージェスチャ必須起動
- * - 追加: getUserMedia 詳細エラー表示
- * - 追加: video 要素属性 (playsinline / muted) を動的付与
+ * Shark Tooth Detector PWA – script.js (auto-button fallback)
+ * - Start Camera ボタンが存在しない場合は動的に生成
+ * - Safari のユーザージェスチャを確実に取得
  */
 
 // ====== DOM Elements ======
-const startBtn = document.getElementById("start"); // <button id="start">
+let startBtn = document.getElementById("start");
 const video = document.getElementById("cam");     // <video id="cam">
 const canvas = document.getElementById("view");   // <canvas id="view">
 const statusLabel = document.getElementById("status");
 const ctx = canvas.getContext("2d");
+
+// 動的に Start ボタンを作成（無ければ）
+if (!startBtn) {
+  startBtn = document.createElement("button");
+  startBtn.id = "start";
+  startBtn.textContent = "Start Camera";
+  Object.assign(startBtn.style, {
+    position: "absolute",
+    top: "50%",
+    left: "50%",
+    transform: "translate(-50%, -50%)",
+    padding: "12px 24px",
+    fontSize: "18px",
+    zIndex: 1000
+  });
+  document.body.appendChild(startBtn);
+}
 
 // video 要素に playsinline / muted を保証
 video.setAttribute("playsinline", "");
@@ -37,17 +53,13 @@ async function setupCamera() {
     video.srcObject = stream;
     await video.play();
   } catch (err) {
-    // 権限エラーや HTTPS でない場合など
     console.error("getUserMedia error", err);
     throw new Error("Camera error: " + err.name + (err.message ? " – " + err.message : ""));
   }
 
-  // Canvas サイズ計算
   const vw = video.videoWidth;
   const vh = video.videoHeight;
-  if (!vw || !vh) {
-    throw new Error("Video dimensions are 0 – camera failed to start");
-  }
+  if (!vw || !vh) throw new Error("Video dimensions are 0 – camera failed to start");
   const ratio = vw / vh;
   const maxW = window.innerWidth;
   const maxH = window.innerHeight;
@@ -94,9 +106,9 @@ function preprocess() {
   const float32 = new Float32Array(modelInput * modelInput * 3);
   let j = 0;
   for (let i = 0; i < img.data.length; i += 4) {
-    float32[j++] = img.data[i + 2] / 255;
-    float32[j++] = img.data[i + 1] / 255;
-    float32[j++] = img.data[i] / 255;
+    float32[j++] = img.data[i + 2] / 255; // B
+    float32[j++] = img.data[i + 1] / 255; // G
+    float32[j++] = img.data[i] / 255;     // R
   }
 
   const transposed = new Float32Array(float32.length);
