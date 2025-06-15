@@ -1,27 +1,22 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <link rel="manifest" href="manifest.json" />
-  <link rel="icon" href="icon-192.png" />
-  <meta name="theme-color" content="#000000" />
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js').then(() => {
-        console.log("✅ ServiceWorker registered");
-      });
-    }
-  </script>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Shark Tooth Detector</title>
-  <link rel="stylesheet" href="style.css" />
+  <style>
+    body,html{margin:0;height:100%;overflow:hidden;background:#000;color:#fff;}
+    canvas{display:block;margin:0 auto;max-width:100%;height:auto;}
+    #status{position:fixed;bottom:8px;left:50%;transform:translateX(-50%);font:16px sans-serif;}
+  </style>
 </head>
 <body>
-  <h1>🦈 Shark Tooth Detector</h1>
-  <video id="video" autoplay playsinline muted></video>
-  <canvas id="canvas"></canvas>
-  <div id="status">📷 Initializing...</div>
-  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
-  <script src="script.js"></script>
+  <!-- 必須要素 -->
+  <video id="cam" style="display:none;"></video>
+  <canvas id="view"></canvas>
+  <p id="status">Initializing…</p>
+
+  <!-- script.js は build 後のパスに合わせる -->
+  <script src="script.js" type="module"></script>
 </body>
 </html>
