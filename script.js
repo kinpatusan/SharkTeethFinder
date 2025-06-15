@@ -1,4 +1,4 @@
-// shark-pwa/script.js（detectLoop実行確認ログと条件緩和）
+// shark-pwa/script.js（detectLoop実行確認ログと条件緩和 + ログ出力を画面に表示）
 
 let video = null;
 let canvas = null;
@@ -9,25 +9,39 @@ let initialized = false;
 function showError(message) {
   const status = document.getElementById('status');
   status.innerHTML = `❌ <span style="color: red">${message}</span>`;
+  log(`[ERROR] ${message}`);
 }
 
 function showReady() {
   const status = document.getElementById('status');
   status.innerHTML = `✅ <span style="color: lime">Ready</span>`;
+  log("[INFO] Ready");
 }
 
 function vibrate() {
   if ("vibrate" in navigator) {
     navigator.vibrate(300);
+    log("[INFO] Vibrate triggered");
+  }
+}
+
+function log(msg) {
+  console.log(msg);
+  const logDiv = document.getElementById("log");
+  if (logDiv) {
+    logDiv.textContent += msg + "\n";
+    if (logDiv.textContent.length > 10000) {
+      logDiv.textContent = logDiv.textContent.slice(-5000);
+    }
   }
 }
 
 async function loadModel() {
   try {
     model = await ort.InferenceSession.create("./best.onnx");
-    console.log("✅ Model loaded");
-    console.log("Model input names:", model.inputNames);
-    console.log("Model output names:", model.outputNames);
+    log("✅ Model loaded");
+    log("Model input names: " + model.inputNames);
+    log("Model output names: " + model.outputNames);
   } catch (e) {
     showError("Model load failed: " + e.message);
   }
@@ -61,10 +75,9 @@ async function initCamera() {
 }
 
 async function detectLoop() {
-  console.log("🔁 detectLoop running");
-  // if (!initialized || !model) return;
+  log("🔁 detectLoop running");
   if (!model) {
-    console.log("🚫 Model not ready");
+    log("🚫 Model not ready");
     return;
   }
 
@@ -75,25 +88,24 @@ async function detectLoop() {
     const feeds = { images: inputTensor };
     const output = await model.run(feeds);
     const result = output[Object.keys(output)[0]];
-    console.log("Result dims:", result.dims);
-    console.log("Sample data[0~5]:", Array.from(result.data).slice(0, 6).join(", "));
+    log("Result dims: " + result.dims);
+    log("Sample data[0~5]: " + Array.from(result.data).slice(0, 6).join(", "));
 
-    // 🔍 スコア確認ログ
-    console.log("🧪 全スコアログ:");
+    log("🧪 全スコアログ:");
     for (let i = 0; i < Math.min(20, result.dims[1]); i++) {
       const score = result.data[i * 6 + 4];
-      console.log(`Box ${i} → score: ${score.toFixed(3)}`);
+      log(`Box ${i} → score: ${score.toFixed(3)}`);
     }
 
     if (result && result.dims.length > 0 && result.data.some(v => v !== 0)) {
       vibrate();
       drawBoxes(result);
     } else {
-      console.log("🟨 No meaningful detection");
+      log("🟨 No meaningful detection");
     }
   } catch (err) {
     showError("Detection error: " + err.message);
-    console.error("Detection error detail:", err);
+    log("Detection error detail: " + err);
   }
 
   requestAnimationFrame(detectLoop);
@@ -150,7 +162,7 @@ function drawBoxes(tensor) {
     drawn++;
   }
 
-  console.log("🟥 Boxes drawn:", drawn);
+  log("🟥 Boxes drawn: " + drawn);
 }
 
 document.addEventListener("DOMContentLoaded", initCamera);
