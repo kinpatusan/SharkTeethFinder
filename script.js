@@ -1,4 +1,4 @@
-// shark-pwa/script.js（出力形式確認用alert付き）
+// shark-pwa/script.js（診断用ログ強化版）
 
 let video = null;
 let canvas = null;
@@ -64,23 +64,32 @@ async function initCamera() {
 }
 
 async function detectLoop() {
-  if (!initialized || !model) return;
+  if (!initialized || !model) {
+    console.log("Not initialized or model not loaded");
+    return;
+  }
 
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
   const inputTensor = preprocess(canvas);
+  console.log("✅ Preprocess done");
 
   try {
-    const feeds = { images: inputTensor }; // 入力名は "images"
+    const feeds = { images: inputTensor };
     const output = await model.run(feeds);
+    console.log("✅ Model.run executed");
+
     const outputNames = Object.keys(output);
     console.log("Output names:", outputNames);
 
-    const result = output[outputNames[0]];
-    console.log("Result dims:", result.dims);
-    console.log("Result data:", result.data);
+    if (outputNames.length === 0) {
+      showError("No output from model");
+      return;
+    }
 
-    // ✅ 出力形式確認用alert（1回だけ表示）
-    if (!window.__shown_once) {
+    const result = output[outputNames[0]];
+    console.log("Result:", result);
+
+    if (!window.__shown_once && result?.data?.length) {
       alert("dims: " + result.dims + "\ndata[0~5]: " + Array.from(result.data).slice(0, 6).join(", "));
       window.__shown_once = true;
     }
@@ -91,6 +100,7 @@ async function detectLoop() {
     }
   } catch (err) {
     showError("Detection error: " + err.message);
+    console.error("Detection error detail:", err);
   }
 
   requestAnimationFrame(detectLoop);
