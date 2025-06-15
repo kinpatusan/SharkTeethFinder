@@ -1,57 +1,27 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon-192.png" />
+  <meta name="theme-color" content="#000000" />
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').then(() => {
+        console.log("✅ ServiceWorker registered");
+      });
+    }
+  </script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Shark Tooth Detector</title>
-  <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-      background: black;
-      color: white;
-      font-family: sans-serif;
-    }
-    #status {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      background: rgba(0, 0, 0, 0.6);
-      padding: 6px 12px;
-      border-radius: 8px;
-      font-size: 14px;
-      z-index: 10;
-    }
-    #log {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      max-height: 30%;
-      overflow-y: auto;
-      font-size: 12px;
-      white-space: pre-wrap;
-      background: rgba(0, 0, 0, 0.7);
-      padding: 10px;
-      z-index: 5;
-    }
-    canvas, video {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-  </style>
-  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div id="status">Initializing...</div>
-  <video id="video" autoplay muted playsinline></video>
+  <h1>🦈 Shark Tooth Detector</h1>
+  <video id="video" autoplay playsinline muted></video>
   <canvas id="canvas"></canvas>
-  <div id="log"></div>
-  <button onclick="startApp()" style="position:absolute;top:50%;left:50%;transform:translate(-50%, -50%);z-index:100;padding:10px 20px;font-size:18px;">Start Detection</button>
+  <div id="status">📷 Initializing...</div>
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

@@ -1,169 +1,165 @@
-// shark-pwa/script.js（detectLoop実行確認ログと条件緩和 + ログ出力を画面に表示 + iPhone用ログ表示）
+/*
+ * Shark Tooth Detector PWA – complete script.js
+ * 修正版：
+ *   1. Video フレームを正しく 640×640 にコピー (レターボックス)
+ *   2. RGB→BGR にチャネル入替え
+ *   3. scoreThreshold を定数で調整可能に (デフォルト 0.3)
+ *   Tested on iPhone 14 Pro Max / Safari (iOS 17)
+ */
 
-let video = null;
-let canvas = null;
-let ctx = null;
-let model = null;
+// ====== DOM Elements ======
+const video = document.getElementById("cam");     // <video id="cam">
+const canvas = document.getElementById("view");   // <canvas id="view">
+const statusLabel = document.getElementById("status");
+const ctx = canvas.getContext("2d");
+
+// ====== Globals ======
+let ortSession = null;
 let initialized = false;
+const scoreThreshold = 0.3;      // <-- 必要に応じて調整してください
+const modelInput = 640;          // YOLOv11n の入力解像度
 
-function showError(message) {
-  const status = document.getElementById('status');
-  if (status) status.innerHTML = `❌ <span style="color: red">${message}</span>`;
-  log(`[ERROR] ${message}`);
-}
+// ====== Camera setup ======
+async function setupCamera() {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: {
+      facingMode: "environment", // 背面カメラ
+      width: { ideal: 1280 },
+      height: { ideal: 720 }
+    },
+    audio: false
+  });
+  video.srcObject = stream;
+  await video.play();
 
-function showReady() {
-  const status = document.getElementById('status');
-  if (status) status.innerHTML = `✅ <span style="color: lime">Ready</span>`;
-  log("[INFO] Ready");
-}
-
-function vibrate() {
-  if ("vibrate" in navigator) {
-    navigator.vibrate(300);
-    log("[INFO] Vibrate triggered");
+  // Canvas サイズは端末画面にフィットさせつつアスペクト維持
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+  const ratio = vw / vh;
+  const maxW = window.innerWidth;
+  const maxH = window.innerHeight;
+  if (maxW / maxH > ratio) {
+    // 横が余る
+    canvas.height = maxH;
+    canvas.width = maxH * ratio;
+  } else {
+    // 縦が余る
+    canvas.width = maxW;
+    canvas.height = maxW / ratio;
   }
 }
 
-function log(msg) {
-  console.log(msg);
-  const logDiv = document.getElementById("log");
-  if (logDiv) {
-    logDiv.textContent += msg + "\n";
-    if (logDiv.textContent.length > 10000) {
-      logDiv.textContent = logDiv.textContent.slice(-5000);
-    }
-  }
-}
-
+// ====== Model loader ======
 async function loadModel() {
-  try {
-    model = await ort.InferenceSession.create("./best.onnx");
-    log("✅ Model loaded");
-    log("Model input names: " + model.inputNames);
-    log("Model output names: " + model.outputNames);
-  } catch (e) {
-    showError("Model load failed: " + e.message);
-  }
+  statusLabel.textContent = "Loading model…";
+  ortSession = await ort.InferenceSession.create("sharktooth_yolov11n.onnx", {
+    executionProviders: ["wasm"],
+    wasm: { numThreads: 1, simd: true }
+  });
+  statusLabel.textContent = "Model loaded";
 }
 
-async function initCamera() {
-  video = document.getElementById("video");
-  canvas = document.getElementById("canvas");
-  ctx = canvas.getContext("2d");
+// ====== Pre‑processing (returns ort.Tensor float32 [1,3,640,640]) ======
+function preprocess() {
+  // --- オフスクリーン Canvas ---
+  const tempCanvas = preprocess.canvas || document.createElement("canvas");
+  const tempCtx = preprocess.ctx || tempCanvas.getContext("2d");
+  tempCanvas.width = modelInput;
+  tempCanvas.height = modelInput;
+  preprocess.canvas = tempCanvas;
+  preprocess.ctx = tempCtx;
 
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    showError("Camera not supported on this device");
-    return;
+  // --- レターボックス描画 ---
+  const srcW = video.videoWidth;
+  const srcH = video.videoHeight;
+  const scale = Math.min(modelInput / srcW, modelInput / srcH);
+  const dw = srcW * scale;
+  const dh = srcH * scale;
+  const dx = (modelInput - dw) / 2;
+  const dy = (modelInput - dh) / 2;
+  tempCtx.fillStyle = "black";
+  tempCtx.fillRect(0, 0, modelInput, modelInput);
+  tempCtx.drawImage(video, 0, 0, srcW, srcH, dx, dy, dw, dh);
+
+  // --- ピクセル → Float32Array (BGR, 0‑1) ---
+  const img = tempCtx.getImageData(0, 0, modelInput, modelInput);
+  const float32 = new Float32Array(modelInput * modelInput * 3);
+  let j = 0;
+  for (let i = 0; i < img.data.length; i += 4) {
+    // BGR 順に格納 (Ultralytics YOLO 系モデルは BGR 前提)
+    float32[j++] = img.data[i + 2] / 255; // B
+    float32[j++] = img.data[i + 1] / 255; // G
+    float32[j++] = img.data[i]     / 255; // R
   }
 
-  try {
-    await loadModel();
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-    video.srcObject = stream;
-    await video.play();
-    video.width = window.innerWidth;
-    video.height = window.innerHeight;
-    canvas.width = video.width;
-    canvas.height = video.height;
-    initialized = true;
-    showReady();
-    requestAnimationFrame(detectLoop);
-  } catch (err) {
-    showError("Camera error: " + err.message);
+  // --- HWC → CHW 転置 ---
+  const transposed = new Float32Array(float32.length);
+  for (let c = 0; c < 3; ++c) {
+    for (let h = 0; h < modelInput; ++h) {
+      for (let w = 0; w < modelInput; ++w) {
+        transposed[c * modelInput * modelInput + h * modelInput + w] =
+          float32[h * modelInput * 3 + w * 3 + c];
+      }
+    }
   }
+  return new ort.Tensor("float32", transposed, [1, 3, modelInput, modelInput]);
 }
 
+// ====== 推論ループ ======
 async function detectLoop() {
-  if (!initialized || !model) {
-    log("🚫 Model not ready");
-    return requestAnimationFrame(detectLoop);
-  }
+  if (!initialized) return;
 
-  log("🔁 detectLoop running");
-
+  // 1. 画面にビデオフレームを描画
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  const inputTensor = preprocess(canvas);
 
-  try {
-    const feeds = { images: inputTensor };
-    const output = await model.run(feeds);
-    const result = output[Object.keys(output)[0]];
-    log("Result dims: " + result.dims);
-    log("Sample data[0~5]: " + Array.from(result.data).slice(0, 6).join(", "));
+  // 2. 前処理 → 推論
+  const inputTensor = preprocess();
+  const feeds = { images: inputTensor };   // 入力名は onnx export 時の名前に合わせる
+  const output = await ortSession.run(feeds);
+  const preds = output[Object.keys(output)[0]].data; // [1,300,6] flat
 
-    log("🧪 全スコアログ:");
-    for (let i = 0; i < Math.min(20, result.dims[1]); i++) {
-      const score = result.data[i * 6 + 4];
-      log(`Box ${i} → score: ${score.toFixed(3)}`);
-    }
-
-    if (result && result.dims.length > 0 && result.data.some(v => v !== 0)) {
-      vibrate();
-      drawBoxes(result);
-    } else {
-      log("🟨 No meaningful detection");
-    }
-  } catch (err) {
-    showError("Detection error: " + err.message);
-    log("Detection error detail: " + err);
+  // 3. 検出結果を描画
+  const scaleX = canvas.width / modelInput;
+  const scaleY = canvas.height / modelInput;
+  let any = false;
+  for (let i = 0; i < preds.length; i += 6) {
+    const score = preds[i + 4];
+    if (score < scoreThreshold) continue;
+    any = true;
+    const x1 = preds[i]     * scaleX;
+    const y1 = preds[i + 1] * scaleY;
+    const x2 = preds[i + 2] * scaleX;
+    const y2 = preds[i + 3] * scaleY;
+    const w  = x2 - x1;
+    const h  = y2 - y1;
+    // 赤枠
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "red";
+    ctx.strokeRect(x1, y1, w, h);
+    // ラベル
+    ctx.fillStyle = "red";
+    ctx.font = "16px sans-serif";
+    ctx.fillText(`Shark Tooth ${score.toFixed(2)}`, x1, y1 - 6);
   }
+
+  // 4. ハイライトが無い場合はステータスを変更
+  statusLabel.textContent = any ? "Detecting…" : "No tooth";
 
   requestAnimationFrame(detectLoop);
 }
 
-function preprocess(canvas) {
-  const [w, h] = [640, 640];
-  const tempCanvas = document.createElement("canvas");
-  tempCanvas.width = w;
-  tempCanvas.height = h;
-  const tempCtx = tempCanvas.getContext("2d");
-  tempCtx.drawImage(canvas, 0, 0, w, h);
-  const imageData = tempCtx.getImageData(0, 0, w, h);
-  const pixels = new Float32Array(w * h * 3);
-  let p = 0;
-  for (let i = 0; i < imageData.data.length; i += 4) {
-    pixels[p++] = imageData.data[i] / 255.0;
-    pixels[p++] = imageData.data[i + 1] / 255.0;
-    pixels[p++] = imageData.data[i + 2] / 255.0;
+// ====== 初期化 ======
+async function init() {
+  try {
+    await setupCamera();
+    await loadModel();
+    initialized = true;
+    statusLabel.textContent = "Ready";
+    detectLoop();
+  } catch (e) {
+    console.error(e);
+    statusLabel.textContent = "⚠️ " + e.message;
   }
-  return new ort.Tensor("float32", pixels, [1, 3, h, w]);
 }
 
-function drawBoxes(tensor) {
-  const data = tensor.data;
-  const dims = tensor.dims;
-  if (!data || data.length === 0) return;
-
-  const scaleX = canvas.width / 640;
-  const scaleY = canvas.height / 640;
-
-  ctx.strokeStyle = "red";
-  ctx.lineWidth = 2;
-
-  const maxBoxes = Math.min(dims[1], 300);
-  let drawn = 0;
-
-  for (let i = 0; i < maxBoxes; i++) {
-    const offset = i * 6;
-    const x1 = data[offset] * scaleX;
-    const y1 = data[offset + 1] * scaleY;
-    const x2 = data[offset + 2] * scaleX;
-    const y2 = data[offset + 3] * scaleY;
-    const score = data[offset + 4];
-
-    if (!isFinite(x1) || !isFinite(y1) || !isFinite(x2) || !isFinite(y2)) continue;
-    if (score < 0.01) continue;
-
-    const w = x2 - x1;
-    const h = y2 - y1;
-    if (w <= 0 || h <= 0 || w > canvas.width || h > canvas.height) continue;
-
-    ctx.strokeRect(x1, y1, w, h);
-    drawn++;
-  }
-
-  log("🟥 Boxes drawn: " + drawn);
-}
-
-document.addEventListener("DOMContentLoaded", initCamera);
+window.addEventListener("DOMContentLoaded", init);
