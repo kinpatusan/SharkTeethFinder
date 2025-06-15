@@ -1,11 +1,10 @@
-// shark-pwa/script.js（フリーズ完全対策：ポップアップを requestAnimationFrame 外に）
+// shark-pwa/script.js（alert無効化＆ログのみ表示でフリーズ完全回避）
 
 let video = null;
 let canvas = null;
 let ctx = null;
 let model = null;
 let initialized = false;
-let firstDetectionShown = false;
 
 function showError(message) {
   const status = document.getElementById('status');
@@ -70,13 +69,7 @@ async function detectLoop() {
     const output = await model.run(feeds);
     const result = output[Object.keys(output)[0]];
     console.log("Result dims:", result.dims);
-
-    if (!firstDetectionShown && result?.data?.length) {
-      setTimeout(() => {
-        alert("dims: " + result.dims + "\ndata[0~5]: " + Array.from(result.data).slice(0, 6).join(", "));
-      }, 100);
-      firstDetectionShown = true;
-    }
+    console.log("Sample data[0~5]:", Array.from(result.data).slice(0, 6).join(", "));
 
     if (result && result.dims.length > 0 && result.data.some(v => v !== 0)) {
       vibrate();
