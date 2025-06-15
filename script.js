@@ -62,9 +62,21 @@ window.addEventListener("DOMContentLoaded", () => {
       throw new Error("Camera error: " + err.name);
     }
 
-    // Canvas サイズを画面幅いっぱい（アスペクト維持せず、検出基準は 640 基準）
+    // Canvas をフル画面に拡大
     canvas.width  = window.innerWidth;
-    canvas.height = window.innerHeight * 0.75; // 下にステータス行確保
+    canvas.height = window.innerHeight;
+    // ステータスメッセージはオーバーレイ表示に切替え
+    Object.assign(statusLabel.style, {
+      position: "fixed",
+      bottom: "8px",
+      left: "50%",
+      transform: "translateX(-50%)",
+      margin: 0,
+      padding: "4px 8px",
+      background: "rgba(0,0,0,0.5)",
+      borderRadius: "6px",
+      fontSize: "16px"
+    }); // 下にステータス行確保
   }
 
   // ===== Model =====
