@@ -1,4 +1,4 @@
-// shark-pwa/script.js（修正版）
+// shark-pwa/script.js（修正版：入力サイズを640x640に対応）
 
 let video = null;
 let canvas = null;
@@ -70,7 +70,7 @@ async function detectLoop() {
   const inputTensor = preprocess(canvas);
 
   try {
-    const feeds = { images: inputTensor }; // 入力名は"images"
+    const feeds = { images: inputTensor }; // 入力名は "images"
     const output = await model.run(feeds);
     const outputNames = Object.keys(output);
     console.log("Output names:", outputNames);
@@ -90,24 +90,27 @@ async function detectLoop() {
   requestAnimationFrame(detectLoop);
 }
 
-// canvasからTensor生成
+// canvasからTensor生成（モデルは 640x640 を要求）
 function preprocess(canvas) {
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const [w, h] = [224, 224]; // 入力サイズに合わせて
+  const [w, h] = [640, 640];
+  const tempCanvas = document.createElement("canvas");
+  tempCanvas.width = w;
+  tempCanvas.height = h;
+  const tempCtx = tempCanvas.getContext("2d");
+  tempCtx.drawImage(canvas, 0, 0, w, h);
+  const imageData = tempCtx.getImageData(0, 0, w, h);
+
   const pixels = new Float32Array(w * h * 3);
   let p = 0;
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const i = ((y * canvas.width) + x) * 4;
-      pixels[p++] = imageData.data[i] / 255.0;
-      pixels[p++] = imageData.data[i + 1] / 255.0;
-      pixels[p++] = imageData.data[i + 2] / 255.0;
-    }
+  for (let i = 0; i < imageData.data.length; i += 4) {
+    pixels[p++] = imageData.data[i] / 255.0;
+    pixels[p++] = imageData.data[i + 1] / 255.0;
+    pixels[p++] = imageData.data[i + 2] / 255.0;
   }
   return new ort.Tensor("float32", pixels, [1, 3, h, w]);
 }
 
-// 推論結果描画（仮：出力が[batch,4]でbboxだと仮定）
+// 推論結果描画（仮：出力が[batch, 4]でbboxだと仮定）
 function drawBoxes(tensor) {
   ctx.strokeStyle = "red";
   ctx.lineWidth = 2;
