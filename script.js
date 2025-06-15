@@ -1,10 +1,11 @@
-// shark-pwa/script.js（YOLOv11 後処理済みモデル対応 + 描画安全化 + フリーズ完全対策）
+// shark-pwa/script.js（フリーズ完全対策：ポップアップを requestAnimationFrame 外に）
 
 let video = null;
 let canvas = null;
 let ctx = null;
 let model = null;
 let initialized = false;
+let firstDetectionShown = false;
 
 function showError(message) {
   const status = document.getElementById('status');
@@ -53,7 +54,7 @@ async function initCamera() {
     canvas.height = video.height;
     initialized = true;
     showReady();
-    detectLoop();
+    requestAnimationFrame(detectLoop);
   } catch (err) {
     showError("Camera error: " + err.message);
   }
@@ -61,22 +62,22 @@ async function initCamera() {
 
 async function detectLoop() {
   if (!initialized || !model) return;
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  const inputTensor = preprocess(canvas);
+
   try {
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const inputTensor = preprocess(canvas);
     const feeds = { images: inputTensor };
     const output = await model.run(feeds);
-    const outputNames = Object.keys(output);
-    if (outputNames.length === 0) {
-      showError("No output from model");
-      return;
-    }
-    const result = output[outputNames[0]];
+    const result = output[Object.keys(output)[0]];
     console.log("Result dims:", result.dims);
-    if (!window.__shown_once && result?.data?.length) {
-      alert("dims: " + result.dims + "\ndata[0~5]: " + Array.from(result.data).slice(0, 6).join(", "));
-      window.__shown_once = true;
+
+    if (!firstDetectionShown && result?.data?.length) {
+      setTimeout(() => {
+        alert("dims: " + result.dims + "\ndata[0~5]: " + Array.from(result.data).slice(0, 6).join(", "));
+      }, 100);
+      firstDetectionShown = true;
     }
+
     if (result && result.dims.length > 0 && result.data.some(v => v !== 0)) {
       vibrate();
       drawBoxes(result);
@@ -87,6 +88,7 @@ async function detectLoop() {
     showError("Detection error: " + err.message);
     console.error("Detection error detail:", err);
   }
+
   requestAnimationFrame(detectLoop);
 }
 
