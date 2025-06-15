@@ -1,34 +1,53 @@
 /*
- * Shark Tooth Detector PWA – complete script.js (best.onnx)
+ * Shark Tooth Detector PWA – script.js (camera-permission debug)
+ * - 追加: スタートボタンによるユーザージェスチャ必須起動
+ * - 追加: getUserMedia 詳細エラー表示
+ * - 追加: video 要素属性 (playsinline / muted) を動的付与
  */
 
 // ====== DOM Elements ======
+const startBtn = document.getElementById("start"); // <button id="start">
 const video = document.getElementById("cam");     // <video id="cam">
 const canvas = document.getElementById("view");   // <canvas id="view">
 const statusLabel = document.getElementById("status");
 const ctx = canvas.getContext("2d");
 
+// video 要素に playsinline / muted を保証
+video.setAttribute("playsinline", "");
+video.setAttribute("muted", "");
+video.autoplay = true;
+
 // ====== Globals ======
 let ortSession = null;
 let initialized = false;
-const scoreThreshold = 0.3;      // <-- 調整可
-const modelInput = 640;          // YOLOv11n 入力解像度
+const scoreThreshold = 0.3;
+const modelInput = 640;
 
 // ====== Camera setup ======
 async function setupCamera() {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: {
-      facingMode: "environment",
-      width: { ideal: 1280 },
-      height: { ideal: 720 }
-    },
-    audio: false
-  });
-  video.srcObject = stream;
-  await video.play();
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: "environment",
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+  } catch (err) {
+    // 権限エラーや HTTPS でない場合など
+    console.error("getUserMedia error", err);
+    throw new Error("Camera error: " + err.name + (err.message ? " – " + err.message : ""));
+  }
 
+  // Canvas サイズ計算
   const vw = video.videoWidth;
   const vh = video.videoHeight;
+  if (!vw || !vh) {
+    throw new Error("Video dimensions are 0 – camera failed to start");
+  }
   const ratio = vw / vh;
   const maxW = window.innerWidth;
   const maxH = window.innerHeight;
@@ -75,9 +94,9 @@ function preprocess() {
   const float32 = new Float32Array(modelInput * modelInput * 3);
   let j = 0;
   for (let i = 0; i < img.data.length; i += 4) {
-    float32[j++] = img.data[i + 2] / 255; // B
-    float32[j++] = img.data[i + 1] / 255; // G
-    float32[j++] = img.data[i]     / 255; // R
+    float32[j++] = img.data[i + 2] / 255;
+    float32[j++] = img.data[i + 1] / 255;
+    float32[j++] = img.data[i] / 255;
   }
 
   const transposed = new Float32Array(float32.length);
@@ -126,7 +145,9 @@ async function detectLoop() {
 // ====== Init ======
 async function init() {
   try {
+    statusLabel.textContent = "Requesting camera…";
     await setupCamera();
+    statusLabel.textContent = "Camera OK";
     await loadModel();
     initialized = true;
     statusLabel.textContent = "Ready";
@@ -137,4 +158,8 @@ async function init() {
   }
 }
 
-window.addEventListener("DOMContentLoaded", init);
+// ====== Start button handler ======
+startBtn.addEventListener("click", () => {
+  startBtn.style.display = "none";
+  init();
+});
