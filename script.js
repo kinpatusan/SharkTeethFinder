@@ -1,4 +1,4 @@
-// shark-pwa/script.js（detectLoop実行確認ログと条件緩和 + ログ出力を画面に表示）
+// shark-pwa/script.js（detectLoop実行確認ログと条件緩和 + ログ出力を画面に表示 + iPhone用ログ表示）
 
 let video = null;
 let canvas = null;
@@ -8,13 +8,13 @@ let initialized = false;
 
 function showError(message) {
   const status = document.getElementById('status');
-  status.innerHTML = `❌ <span style="color: red">${message}</span>`;
+  if (status) status.innerHTML = `❌ <span style="color: red">${message}</span>`;
   log(`[ERROR] ${message}`);
 }
 
 function showReady() {
   const status = document.getElementById('status');
-  status.innerHTML = `✅ <span style="color: lime">Ready</span>`;
+  if (status) status.innerHTML = `✅ <span style="color: lime">Ready</span>`;
   log("[INFO] Ready");
 }
 
@@ -75,11 +75,12 @@ async function initCamera() {
 }
 
 async function detectLoop() {
-  log("🔁 detectLoop running");
-  if (!model) {
+  if (!initialized || !model) {
     log("🚫 Model not ready");
-    return;
+    return requestAnimationFrame(detectLoop);
   }
+
+  log("🔁 detectLoop running");
 
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
   const inputTensor = preprocess(canvas);
