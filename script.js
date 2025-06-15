@@ -1,4 +1,4 @@
-// shark-pwa/script.js（スコアログ＋閾値緩和で検出確認）
+// shark-pwa/script.js（detectLoop実行確認ログと条件緩和）
 
 let video = null;
 let canvas = null;
@@ -61,7 +61,13 @@ async function initCamera() {
 }
 
 async function detectLoop() {
-  if (!initialized || !model) return;
+  console.log("🔁 detectLoop running");
+  // if (!initialized || !model) return;
+  if (!model) {
+    console.log("🚫 Model not ready");
+    return;
+  }
+
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
   const inputTensor = preprocess(canvas);
 
@@ -134,7 +140,7 @@ function drawBoxes(tensor) {
     const score = data[offset + 4];
 
     if (!isFinite(x1) || !isFinite(y1) || !isFinite(x2) || !isFinite(y2)) continue;
-    if (score < 0.01) continue; // 🔽 スコア閾値を0.01に緩和
+    if (score < 0.01) continue;
 
     const w = x2 - x1;
     const h = y2 - y1;
