@@ -115,9 +115,9 @@ function drawBoxes(tensor) {
   ctx.strokeStyle = "red";
   ctx.lineWidth = 2;
 
-  // ⚠️ 暴走防止：最大1000個の描画に制限
-  const maxBoxes = Math.min(Math.floor(data.length / 6), 1000);
+  let drawn = 0;
 
+  const maxBoxes = Math.min(dims[1], 300); // dims = [1, 300, 6]
   for (let i = 0; i < maxBoxes; i++) {
     const offset = i * 6;
     const x1 = data[offset];
@@ -125,11 +125,20 @@ function drawBoxes(tensor) {
     const x2 = data[offset + 2];
     const y2 = data[offset + 3];
     const score = data[offset + 4];
-    if (score < 0.5) continue;
+
+    if (!isFinite(x1) || !isFinite(y1) || !isFinite(x2) || !isFinite(y2)) continue;
+    if (score < 0.3) continue;
+
     const w = x2 - x1;
     const h = y2 - y1;
+    if (w <= 0 || h <= 0) continue;
+
     ctx.strokeRect(x1, y1, w, h);
+    drawn++;
   }
+
+  console.log("🟥 Boxes drawn:", drawn);
 }
+
 
 document.addEventListener("DOMContentLoaded", initCamera);
