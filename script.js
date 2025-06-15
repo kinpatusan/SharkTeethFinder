@@ -59,11 +59,12 @@ window.addEventListener("DOMContentLoaded", () => {
   };
 
   // === Camera Handling ===
+    // === Camera Handling ===
   async function getRearCameras() {
+    // iOS では permission 後に label が開示される
     const devices = await navigator.mediaDevices.enumerateDevices();
-    return devices.filter(d => d.kind === "videoinput" && d.label.toLowerCase().includes("back"));
+    return devices.filter(d => d.kind === "videoinput");  // すべてのビデオ入力
   }
-
   async function setupCamera(deviceId = null) {
     if (currentStream) {
       currentStream.getTracks().forEach(t => t.stop());
@@ -85,17 +86,29 @@ window.addEventListener("DOMContentLoaded", () => {
     status.textContent = "Ready";
   };
 
-  async function populateCameraList() {
+    async function populateCameraList() {
     const cams = await getRearCameras();
     camSelect.innerHTML = "";
+
+    if (cams.length === 0) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "Default";
+      camSelect.appendChild(opt);
+      camSelect.disabled = true;
+      return;
+    }
+
     cams.forEach((cam, idx) => {
       const opt = document.createElement("option");
       opt.value = cam.deviceId;
-      opt.textContent = cam.label || `Rear ${idx+1}`;
+      const label = cam.label || `Cam ${idx + 1}`;
+      opt.textContent = label.replace(/\(.*\)/, "").trim(); // () 内は簡易削除
       camSelect.appendChild(opt);
     });
-  }
 
+    camSelect.disabled = cams.length === 1; // 1 個だけなら切替不要
+  }
   // === Model ===
   async function loadModel() {
     status.textContent = "Loading model…";
