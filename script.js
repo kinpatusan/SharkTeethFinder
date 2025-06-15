@@ -61,15 +61,47 @@ window.addEventListener("DOMContentLoaded", () => {
     return dev.filter(d=>d.kind==="videoinput");
   }
 
-  async function populateCameraList(){
+    async function populateCameraList() {
     const all = await listVideoInputs();
-    let wide=null, ultra=null;
-    for(const cam of all){
-      const label = cam.label.toLowerCase();
-      if(!ultra && /超広角|ultra[- ]?wide/.test(label)) ultra = cam;
-      if(!wide  && /背面(?!.*超広角).*カメラ|back.*camera|wide/.test(label)) wide = cam;
+
+    // 1. 背面カメラだけ抽出 (label に『背面』『rear』『back』のどれか)
+    const rear = all.filter(c => /背面|rear|back/i.test(c.label));
+    if (rear.length === 0) {
+      // 取得できなければ全一覧の先頭 1 台だけ
+      camSelect.innerHTML = `<option value="">Default</option>`;
+      camSelect.disabled = true;
+      return;
     }
-    if(!wide && all[0]) wide = all[0];
+
+    // 2. 背面の中から ultra‑wide を検出（『超広角』『ultra‑wide』）
+    let ultra = rear.find(c => /超広角|ultra[- ]?wide/i.test(c.label));
+
+    // 3. 背面ワイド（メイン）は ultra ではない最初のデバイス
+    let wide  = rear.find(c => c !== ultra);
+
+    // 4. フォールバック：rear[0] を wide, rear[1] を ultra
+    if (!wide)  wide  = rear[0];
+    if (!ultra) ultra = rear[1] || null;
+
+    // 5. セレクタへ反映
+    camSelect.innerHTML = "";
+    const pushOpt = (cam, labelTxt) => {
+      const opt = document.createElement("option");
+      opt.value = cam.deviceId;
+      opt.textContent = labelTxt;
+      camSelect.appendChild(opt);
+    };
+    if (wide)  pushOpt(wide,  "背面カメラ");
+    if (ultra) pushOpt(ultra, "背面超広角カメラ");
+
+    // 同じ deviceId の重複除去 (念のため)
+    const seen = new Set();
+    [...camSelect.options].forEach(o => {
+      if (seen.has(o.value)) camSelect.removeChild(o); else seen.add(o.value);
+    });
+
+    camSelect.disabled = camSelect.options.length <= 1;
+  }    if(!wide && all[0]) wide = all[0];
     if(!ultra && all[1]) ultra = all[1];
 
     camSelect.innerHTML="";
