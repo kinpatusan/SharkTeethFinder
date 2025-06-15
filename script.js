@@ -165,14 +165,23 @@ window.addEventListener("DOMContentLoaded", () => {
   // === Init ===
   async function init() {
     try {
-      status.textContent="Requesting camera…";
+      status.textContent = "Requesting camera…";
       await setupCamera();
       await populateCameraList();
-      status.textContent="Camera OK";
+      status.textContent = "Camera OK";
       await loadModel();
-      ready=true; status.textContent="Ready";
+      ready = true;
+      status.textContent = "Ready";
       detectLoop();
-    } catch(e) { status.textContent="⚠️ "+e.message; console.error(e); }
+    } catch (e) {
+      status.textContent = "⚠️ " + e.message;
+      console.error(e);
+    }
   }
 
-  startBtn
+  // --- Start button handler ---
+  startBtn.addEventListener("click", () => {
+    startBtn.style.display = "none";
+    init();
+  });
+});
