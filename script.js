@@ -5,7 +5,7 @@
  * 2. UI に “Confidence Threshold” スライダーを追加
  *    - range 0.10–0.90, デフォルト 0.50
  *    - 動かすと即座に TH が変わり赤枠フィルタリングが更新される
- * 3. ONNX モデルファイル名を best_iou06.onnx に変更（yolo export iou=0.6）
+ * 3. ONNX モデルファイル名を best.onnx に変更（yolo export iou=0.6）
  */
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -76,7 +76,7 @@ window.addEventListener("DOMContentLoaded", () => {
   // === Model (NMS IoU 0.6 でエクスポートした ONNX) ===
   async function loadModel() {
     status.textContent = "Loading model…";
-    ortSession = await ort.InferenceSession.create("best_iou06.onnx", {
+    ortSession = await ort.InferenceSession.create("best.onnx", {
       executionProviders:["wasm"], wasm:{ simd:true }
     });
     status.textContent = "Model loaded";
