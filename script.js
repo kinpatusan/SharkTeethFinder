@@ -1,10 +1,10 @@
 /*
- * Shark Tooth Detector PWA – script.js  (v2)
+ * Shark Tooth Detector PWA – script.js  (v3 – syntax‑fixed)
  * -------------------------------------------------------------
  * • デフォルト TH 0.65
- * • カメラ切替：背面カメラ / 背面超広角カメラ の 2 択だけ表示
- *   - ラベル判定に失敗したときは最初の 2 台を fallback 採用
- * • 以前の重複した populateCameraList コードを整理
+ * • カメラ切替：背面カメラ / 背面超広角カメラ の 2 択表示
+ *   - fallback: rear[0] = wide, rear[1] = ultra (存在すれば)
+ * • 余分な duplicate コードを削除し、構文エラーを解消
  */
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -55,75 +55,37 @@ window.addEventListener("DOMContentLoaded", () => {
 
   slider.oninput = e => { TH = parseFloat(e.target.value); sliderText.textContent = TH.toFixed(2); };
 
-  // === Camera Handling ===
-  async function listVideoInputs(){
-    const dev = await navigator.mediaDevices.enumerateDevices();
-    return dev.filter(d=>d.kind==="videoinput");
-  }
+  // === Camera Helpers ===
+  const listVideoInputs = async () => {
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    return devs.filter(d => d.kind === "videoinput");
+  };
 
-    async function populateCameraList() {
+  async function populateCameraList(){
     const all = await listVideoInputs();
-
-    // 1. 背面カメラだけ抽出 (label に『背面』『rear』『back』のどれか)
     const rear = all.filter(c => /背面|rear|back/i.test(c.label));
-    if (rear.length === 0) {
-      // 取得できなければ全一覧の先頭 1 台だけ
-      camSelect.innerHTML = `<option value="">Default</option>`;
-      camSelect.disabled = true;
-      return;
-    }
-
-    // 2. 背面の中から ultra‑wide を検出（『超広角』『ultra‑wide』）
     let ultra = rear.find(c => /超広角|ultra[- ]?wide/i.test(c.label));
-
-    // 3. 背面ワイド（メイン）は ultra ではない最初のデバイス
     let wide  = rear.find(c => c !== ultra);
+    if (!wide && rear[0])  wide  = rear[0];
+    if (!ultra && rear[1]) ultra = rear[1];
 
-    // 4. フォールバック：rear[0] を wide, rear[1] を ultra
-    if (!wide)  wide  = rear[0];
-    if (!ultra) ultra = rear[1] || null;
-
-    // 5. セレクタへ反映
     camSelect.innerHTML = "";
-    const pushOpt = (cam, labelTxt) => {
-      const opt = document.createElement("option");
-      opt.value = cam.deviceId;
-      opt.textContent = labelTxt;
-      camSelect.appendChild(opt);
-    };
-    if (wide)  pushOpt(wide,  "背面カメラ");
-    if (ultra) pushOpt(ultra, "背面超広角カメラ");
-
-    // 同じ deviceId の重複除去 (念のため)
-    const seen = new Set();
-    [...camSelect.options].forEach(o => {
-      if (seen.has(o.value)) camSelect.removeChild(o); else seen.add(o.value);
-    });
-
+    const addOpt = (cam, label) => { if(!cam) return; const o=document.createElement("option"); o.value=cam.deviceId; o.textContent=label; camSelect.appendChild(o); };
+    addOpt(wide,  "背面カメラ");
+    addOpt(ultra, "背面超広角カメラ");
     camSelect.disabled = camSelect.options.length <= 1;
-  }    if(!wide && all[0]) wide = all[0];
-    if(!ultra && all[1]) ultra = all[1];
-
-    camSelect.innerHTML="";
-    [wide, ultra].filter(Boolean).forEach((cam,idx)=>{
-      const opt=document.createElement("option");
-      opt.value=cam.deviceId;
-      opt.textContent = idx===0 ? "背面カメラ" : "背面超広角カメラ";
-      camSelect.appendChild(opt);
-    });
-    camSelect.disabled = camSelect.options.length<=1;
   }
 
   async function setupCamera(deviceId=null){
     if(currentStream) currentStream.getTracks().forEach(t=>t.stop());
-    const constraints = deviceId ? { video:{ deviceId:{exact:deviceId} }, audio:false }
+    const constraints = deviceId ? { video:{ deviceId:{ exact:deviceId } }, audio:false }
                                  : { video:{ facingMode:"environment" }, audio:false };
     currentStream = await navigator.mediaDevices.getUserMedia(constraints);
-    video.srcObject=currentStream; await video.play();
-    canvas.width=window.innerWidth; canvas.height=window.innerHeight;
+    video.srcObject = currentStream; await video.play();
+    canvas.width = window.innerWidth; canvas.height = window.innerHeight;
   }
 
-  camSelect.onchange = async e => { status.textContent="Switching…"; await setupCamera(e.target.value); status.textContent="Ready"; };
+  camSelect.onchange = async e => { status.textContent = "Switching…"; await setupCamera(e.target.value); status.textContent = "Ready"; };
 
   // === Model ===
   async function loadModel(){ status.textContent="Loading model…"; ortSession=await ort.InferenceSession.create("best.onnx",{executionProviders:["wasm"],wasm:{simd:true}}); status.textContent="Model loaded"; }
@@ -139,17 +101,17 @@ window.addEventListener("DOMContentLoaded", () => {
     return new ort.Tensor("float32",chw,[1,3,INPUT,INPUT]);
   }
 
-  // === Loop ===
+  // === Detection Loop ===
   async function detectLoop(){
     if(!ready) return;
-    const tensor=preprocess();
+    const tensor = preprocess();
     ctx.drawImage(video,0,0,video.videoWidth,video.videoHeight,0,0,canvas.width,canvas.height);
     const out=await ortSession.run({images:tensor}); const d=out[Object.keys(out)[0]].data;
     const {sw,sh,s,dx,dy}=preprocess.meta; const sx=canvas.width/sw, sy=canvas.height/sh; let found=false;
-    for(let i=0;i<d.length;i+=6){const conf=d[i+4]; if(conf<TH) continue; found=true; const vx1=(d[i]-dx)/s, vy1=(d[i+1]-dy)/s, vx2=(d[i+2]-dx)/s, vy2=(d[i+3]-dy)/s; const x1=vx1*sx, y1=vy1*sy, x2=vx2*sx, y2=vy2*sy; ctx.strokeStyle="red"; ctx.lineWidth=3; ctx.strokeRect(x1,y1,x2-x1,y2-y1); ctx.fillStyle="yellow"; ctx.font="14px sans-serif"; ctx.fillText(conf.toFixed(2),x1+4,y1+16);} status.textContent=found?"Detecting…":"No tooth"; requestAnimationFrame(detectLoop); }
+    for(let i=0;i<d.length;i+=6){ const conf=d[i+4]; if(conf<TH) continue; found=true; const vx1=(d[i]-dx)/s, vy1=(d[i+1]-dy)/s, vx2=(d[i+2]-dx)/s, vy2=(d[i+3]-dy)/s; const x1=vx1*sx, y1=vy1*sy, x2=vx2*sx, y2=vy2*sy; ctx.strokeStyle="red"; ctx.lineWidth=3; ctx.strokeRect(x1,y1,x2-x1,y2-y1); ctx.fillStyle="yellow"; ctx.font="14px sans-serif"; ctx.fillText(conf.toFixed(2),x1+4,y1+16);} status.textContent = found ? "Detecting…" : "No tooth"; requestAnimationFrame(detectLoop); }
 
   // === Init ===
   async function init(){ try{ status.textContent="Requesting camera…"; await setupCamera(); await populateCameraList(); status.textContent="Camera OK"; await loadModel(); ready=true; status.textContent="Ready"; detectLoop(); }catch(e){ status.textContent="⚠️ "+e.message; console.error(e);} }
 
-  startBtn.addEventListener("click",()=>{ startBtn.style.display="none"; init(); });
+  startBtn.addEventListener("click", () => { startBtn.style.display="none"; init(); });
 });
