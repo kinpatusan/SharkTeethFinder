@@ -45,7 +45,7 @@
       pending = false;
     }
   };
-  wk.postMessage({ type: 'init', modelUrl: 'best.onnx', numThreads: 2 });
+  wk.postMessage({ type: 'init', modelUrl: 'best.onnx', numThreads: 1 });
 
   // === Camera helpers ===
   let currentStream = null;

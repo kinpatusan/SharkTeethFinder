@@ -15,7 +15,7 @@ self.onmessage = async (e) => {
   const { type } = e.data;
 
   if (type === 'init') {
-    const { modelUrl, numThreads = 2 } = e.data;
+    const { modelUrl, numThreads = 1 } = e.data;
     session = await ort.InferenceSession.create(modelUrl, {
       executionProviders: ['wasm'],
       wasm: { simd: true, numThreads }
