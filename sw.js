@@ -1,49 +1,61 @@
 // sw.js – Service Worker for Shark-Tooth Detector PWA
-// ---------------------------------------------------
-// 1. 必要ファイルをすべて precache
-// 2. cache-first → network fallback でオフライン対応
-// 3. v 番号を上げれば旧キャッシュが自動で削除される
+// --------------------------------------------------
+// 1. すべての実行ファイルを precache してオフライン対応
+// 2. cache-first → network fallback 方式
+// 3. CACHE_NAME を上げれば旧キャッシュが削除される
 
-const CACHE_NAME = 'tooth-detector-v1';
+const CACHE_NAME = 'tooth-detector-v2';
+
 const FILES_TO_CACHE = [
-  '/',                       // index.html が返る
+  '/',                        // ルート（index.html に解決）
   '/index.html',
   '/script.js',
   '/worker.js',
+  '/style.css',               // 存在する場合
   '/best.onnx',
+
+  // ONNX Runtime Web 1.22.0 ランタイム一式
   '/ort-web.min.js',
   '/ort-wasm-simd-threaded.wasm',
-  // ↓ 必要なら追加
-  // '/icon-192.png',
-  // '/icon-512.png',
-  // '/manifest.json',
+  '/ort-wasm-simd-threaded.mjs',
+
+  // JSEP (WebGPU/WebNN) 版 － 使わなくても 404 回避用に置く
+  '/ort-wasm-simd-threaded.jsep.wasm',
+  '/ort-wasm-simd-threaded.jsep.mjs',
+
+  // PWA アイコン・マニフェスト
+  '/manifest.json',
+  '/icon-192.png',
+  '/icon-512.png'
 ];
 
-// ----- install -----
+// ---------- install ----------
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(FILES_TO_CACHE))
   );
-  self.skipWaiting();             // 即時アクティブ化
+  self.skipWaiting();               // 即座に新 SW を有効化
 });
 
-// ----- activate -----
+// ---------- activate ----------
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter((k) => k !== CACHE_NAME) // 古いキャッシュ名を削除
+          .filter((k) => k !== CACHE_NAME) // 古いキャッシュを削除
           .map((k) => caches.delete(k))
       )
     )
   );
-  self.clients.claim();           // クライアント即制御
+  self.clients.claim();             // ページを即制御
 });
 
-// ----- fetch: cache-first -----
+// ---------- fetch ----------
 self.addEventListener('fetch', (event) => {
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    caches.match(event.request).then(
+      (cached) => cached || fetch(event.request)
+    )
   );
 });
