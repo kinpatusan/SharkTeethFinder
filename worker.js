@@ -9,10 +9,15 @@
 importScripts('ort-web.min.js');
 
 // ▼ v1.22.0 では .wasm が /shark-pwa/ 直下の場合、パスを上書き
+// ▼ v1.22.0 : .wasm と併せて .mjs（ローダ）も動的 import される
 ort.env.wasm.wasmPaths = {
-  'ort-wasm-simd-threaded.wasm': './ort-wasm-simd-threaded.wasm'
-  // 追加で JSEP 版を使うなら↓を追記
-  // 'ort-wasm-simd-threaded.jsep.wasm': './ort-wasm-simd-threaded.jsep.wasm'
+  // CPU WASM スレッド版
+  'ort-wasm-simd-threaded.wasm': './ort-wasm-simd-threaded.wasm',
+  'ort-wasm-simd-threaded.mjs' : './ort-wasm-simd-threaded.mjs',
+
+  // JSEP (WebGPU/WebNN) 版 – 使わない場合は 404 回避用にだけ置く
+  'ort-wasm-simd-threaded.jsep.wasm': './ort-wasm-simd-threaded.jsep.wasm',
+  'ort-wasm-simd-threaded.jsep.mjs' : './ort-wasm-simd-threaded.jsep.mjs'
 };
 
 let session = null;
