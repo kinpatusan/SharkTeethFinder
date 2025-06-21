@@ -4,6 +4,7 @@
 // Camera labels: 2× (tele) / 1× (ultra‑wide) and default to 1×
 // 2025‑06‑26  🛠 Fix: message type mismatch (box→bbox) & frame payload (image→bitmap)
 // 2025‑06‑27  🩹 Hot‑fix: iOS Safari blank preview – fallback to createImageBitmap
+// 2025‑06‑28  🎥 Draw video onto canvas so preview appears even if <video> rendering fails
 // -----------------------------------------------------------------------------
 (() => {
   /* === DOM === */
@@ -11,12 +12,6 @@
   const canvas = document.getElementById('view');
   const status = document.getElementById('status');
   const ctx    = canvas.getContext('2d');
-
-  const maskT = document.getElementById('maskT');
-  const maskB = document.getElementById('maskB');
-  // hide left/right masks
-  document.getElementById('maskL').style.display = 'none';
-  document.getElementById('maskR').style.display = 'none';
 
   /* === UI (threshold slider & camera picker) === */
   const ui = document.createElement('div');
@@ -27,9 +22,9 @@
   });
   ui.innerHTML = `TH: <span id="thrVal">0.65</span><input id="thr" type="range" min="0" max="1" step="0.05" value="0.65" style="width:120px;vertical-align:middle;">&nbsp;| Camera: <select id="camSel" style="background:#222;color:#fff;border-radius:4px;padding:2px 4px;"></select>`;
   document.body.appendChild(ui);
-  const slider    = document.getElementById('thr');
-  const sliderVal = document.getElementById('thrVal');
-  const camSel    = document.getElementById('camSel');
+  const slider    = ui.querySelector('#thr');
+  const sliderVal = ui.querySelector('#thrVal');
+  const camSel    = ui.querySelector('#camSel');
   let TH = 0.65;
   slider.oninput = e => { TH = +e.target.value; sliderVal.textContent = TH.toFixed(2); };
 
@@ -114,12 +109,6 @@
       this.offsetY = (vh - fitH) / 2;
       this.detectTop = this.offsetY + (fitH - 640 * this.scale) / 2;
       canvas.width = vw; canvas.height = vh;
-    },
-    clear() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
-      ctx.fillRect(0, 0, canvas.width, this.detectTop);
-      ctx.fillRect(0, this.detectTop + 640 * this.scale, canvas.width, canvas.height - (this.detectTop + 640 * this.scale));
     }
   };
   window.addEventListener('resize', () => layout.update(video.videoWidth, video.videoHeight));
@@ -128,16 +117,15 @@
   const tmp = document.createElement('canvas');
   tmp.width = tmp.height = 640;
   const tctx = tmp.getContext('2d');
-  async function feedWorker() { // <‑‑ now async for fallback path
+  async function feedWorker() {
     const sw = video.videoWidth, sh = video.videoHeight;
-    if (!sw || !sh) return;
+    if (!sw || !sh) { pending = false; return; }
     tctx.drawImage(video, 0, 0, sw, sh, 0, 0, 640, 640);
     let bmp;
     if (tmp.transferToImageBitmap) {
       try {
         bmp = tmp.transferToImageBitmap();
-      } catch (err) {
-        // Safari 17+ supports transferToImageBitmap but fallback for older devices
+      } catch {
         bmp = await createImageBitmap(tmp);
       }
     } else {
@@ -146,25 +134,41 @@
     wk.postMessage({ type: 'frame', bitmap: bmp }, [bmp]);
   }
 
-  /* === Render loop === */
-  let pending = false, lastBoxes = null;
+  /* === Draw helpers === */
+  function maskOutside() {
+    const s = layout.scale;
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillRect(0, 0, canvas.width, layout.detectTop);
+    ctx.fillRect(0, layout.detectTop + 640 * s, canvas.width, canvas.height - (layout.detectTop + 640 * s));
+  }
+
   function drawBoxes() {
     if (!lastBoxes) return;
     const s = layout.scale;
+    ctx.strokeStyle = '#0f0';
+    ctx.lineWidth = 2;
+    ctx.font = '14px sans-serif';
     for (let i = 0; i < lastBoxes.length; i += 5) {
       const x1 = lastBoxes[i], y1 = lastBoxes[i + 1], x2 = lastBoxes[i + 2], y2 = lastBoxes[i + 3], score = lastBoxes[i + 4];
       if (score < TH) continue;
-      ctx.strokeStyle = '#0f0'; ctx.lineWidth = 2;
       ctx.strokeRect(x1 * s + layout.offsetX, y1 * s + layout.offsetY, (x2 - x1) * s, (y2 - y1) * s);
-      ctx.fillStyle = '#0f0'; ctx.fillText((score * 100).toFixed(1) + '%', x1 * s + layout.offsetX + 4, y1 * s + layout.offsetY + 16);
+      ctx.fillText((score * 100).toFixed(1) + '%', x1 * s + layout.offsetX + 4, y1 * s + layout.offsetY + 16);
     }
   }
 
+  /* === Render loop === */
+  let pending = false, lastBoxes = null;
   function loop() {
     if (video.readyState >= 2 && workerReady) {
-      if (!pending) { pending = true; feedWorker(); }
-      layout.clear();
+      // draw camera frame onto canvas so preview appears even if <video> isn't visible
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const s = layout.scale;
+      ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight,
+                    layout.offsetX, layout.offsetY, video.videoWidth * s, video.videoHeight * s);
+      maskOutside();
       drawBoxes();
+
+      if (!pending) { pending = true; feedWorker(); }
     }
     requestAnimationFrame(loop);
   }
