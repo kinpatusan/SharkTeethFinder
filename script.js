@@ -70,35 +70,47 @@
   function updateLayout(sw,sh){
     if(!sw||!sh) return null;
 
-    // 1. canvas: 4:3, width‑fit in portrait (so dark bands top/bottom)
+    // 1. Portrait: use full width, height = w * 4/3  (縦長 4:3)
     if(window.innerWidth < window.innerHeight){
       canvas.width  = window.innerWidth;
-      canvas.height = Math.round(canvas.width * 3 / 4);
+      canvas.height = Math.round(canvas.width * 4 / 3);
+      if(canvas.height > window.innerHeight){
+        // If still taller than viewport, scale down to fit height
+        canvas.height = window.innerHeight;
+        canvas.width  = Math.round(canvas.height * 3 / 4);
+      }
     }else{
+      // Landscape: same logic but height-fit so we still keep 4:3 preview (pillarbox)
       canvas.height = window.innerHeight;
       canvas.width  = Math.round(canvas.height * 4 / 3);
     }
 
-    // 2. vertical center entire preview
-    const offsetY=Math.max((window.innerHeight-canvas.height)/2,0);
-    canvas.style.top=`${offsetY}px`;
+    // 2. vertical centering whole preview
+    const offsetY = Math.max((window.innerHeight - canvas.height) / 2, 0);
+    canvas.style.top = `${offsetY}px`;
 
-    // 3. inner mapping (video → canvas)
-    const sUI=canvas.width/sw;
-    const dh = sh * sUI;
-    const dy = (canvas.height - dh) / 2;
+    // 3. Map video to canvas – fit width so video spans left→right, dark bands top/bottom only
+    const sUI = canvas.width / sw;
+    const dh  = sh * sUI;                   // video height after scaling
+    const dy  = (canvas.height - dh) / 2;   // top edge of video inside canvas
 
-    // 4. update top/bottom masks once
-    const key=`${dy}|${dh}|${canvas.height}|${offsetY}`;
-    if(key!==lastGeom){
-      const fullH=window.innerHeight;
-      maskT.style.cssText=`left:0;top:0;width:${canvas.width}px;height:${offsetY+dy}px;background:rgba(0,0,0,.45);position:fixed;pointer-events:none;z-index:999;`;
-      maskB.style.cssText=`left:0;top:${offsetY+dy+dh}px;width:${canvas.width}px;height:${fullH-(offsetY+dy+dh)}px;background:rgba(0,0,0,.45);position:fixed;pointer-events:none;z-index:999;`;
-      lastGeom=key;
+    // 4. Detection square – full width x width (1:1)
+    const detectTop = (canvas.height - canvas.width) / 2;
+
+    // 5. Mask geometry – darken outside detect square (but still show video underneath)
+    const key = `${detectTop}|${canvas.width}|${canvas.height}|${offsetY}`;
+    if(key !== lastGeom){
+      const fullH = window.innerHeight;
+      maskT.style.cssText = `left:0;top:0;width:${canvas.width}px;height:${offsetY+detectTop}px;background:rgba(0,0,0,.45);position:fixed;pointer-events:none;z-index:999;`;
+      maskB.style.cssText = `left:0;top:${offsetY+detectTop+canvas.width}px;width:${canvas.width}px;height:${fullH-(offsetY+detectTop+canvas.width)}px;background:rgba(0,0,0,.45);position:fixed;pointer-events:none;z-index:999;`;
+      lastGeom = key;
     }
-    return {sUI,dy};
+
+    return { dy: detectTop, sUI }; // dy is now top of detection square
   }
-  window.addEventListener('resize',()=>updateLayout(video.videoWidth,video.videoHeight));
+  window.addEventListener('resize', ()=>updateLayout(video.videoWidth, video.videoHeight));
+
+  /* ===== Worker input canvas (640×640) ===== */
 
   /* ===== Worker input canvas (640×640) ===== */
   const tmp=document.createElement('canvas');tmp.width=tmp.height=640;const tctx=tmp.getContext('2d');
