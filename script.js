@@ -77,11 +77,11 @@
   };
 
   /* ===== Layout & mask ===== */
-  let lastKey = '';
+  let lastKey='';
   function updateLayout(sw,sh){
     if(!sw||!sh) return null;
 
-    // 1. canvas size (4:3)
+    // 1. canvas size (4:3) – fills device width in portrait, height in landscape
     if(window.innerWidth < window.innerHeight){
       canvas.width  = window.innerWidth;
       canvas.height = Math.round(canvas.width * 3 / 4);
@@ -90,31 +90,37 @@
       canvas.width  = Math.round(canvas.height * 4 / 3);
     }
 
-    // 2. vertical center
-    const offsetY = Math.max((window.innerHeight - canvas.height)/2, 0);
+    // 2. vertical centering of whole preview area
+    const offsetY = Math.max((window.innerHeight - canvas.height) / 2, 0);
     canvas.style.top = `${offsetY}px`;
 
-    // 3. inner 4:3 frame (for bbox mapping)
-    const sUI = Math.min(canvas.width/sw, canvas.height/sh);
-    const dw = sw * sUI, dh = sh * sUI;
-    const dx = (canvas.width  - dw)/2;
-    const dy = (canvas.height - dh)/2;
+    // 3. **Always fit by width** so video fully spans left‑right (dark bands top/bottom only)
+    const sUI = canvas.width / sw;
+    const dw  = canvas.width;
+    const dh  = sh * sUI;
+    const dx  = 0;
+    const dy  = (canvas.height - dh) / 2;
 
-    // 4. update masks only if geometry changed
-    const key = `${dx}|${dy}|${dw}|${dh}|${canvas.width}|${canvas.height}|${offsetY}`;
+    // 4. Mask update only if geometry changed
+    const key = `${dy}|${dh}|${canvas.height}|${offsetY}`;
     if(key !== lastKey){
       const fullH = window.innerHeight;
-      maskL.style.cssText = `left:0;top:0;width:${dx}px;height:${fullH}px;`;
-      maskR.style.cssText = `left:${dx+dw}px;top:0;width:${canvas.width-dx-dw}px;height:${fullH}px;`;
-      maskT.style.cssText = `left:${dx}px;top:0;width:${dw}px;height:${offsetY+dy}px;`;
-      maskB.style.cssText = `left:${dx}px;top:${offsetY+dy+dh}px;width:${dw}px;height:${fullH-(offsetY+dy+dh)}px;`;
+      // Left / right masks hidden
+      maskL.style.cssText = 'display:none;';
+      maskR.style.cssText = 'display:none;';
+      // Top mask
+      maskT.style.cssText = `display:block;left:0;top:0;width:${canvas.width}px;height:${offsetY+dy}px;background:rgba(0,0,0,.45);position:fixed;pointer-events:none;z-index:999;`;
+      // Bottom mask
+      maskB.style.cssText = `display:block;left:0;top:${offsetY+dy+dh}px;width:${canvas.width}px;height:${fullH-(offsetY+dy+dh)}px;background:rgba(0,0,0,.45);position:fixed;pointer-events:none;z-index:999;`;
       lastKey = key;
     }
-    return { dx,dy,sUI };
+    return { dx:0, dy, sUI };
   }
   window.addEventListener('resize', ()=>updateLayout(video.videoWidth, video.videoHeight));
 
-  /* ===== Worker input canvas (640×640) ===== */
+  /* ===== Worker input canvas (640×640) */('resize',()=>updateLayout(video.videoWidth,video.videoHeight));
+
+  /* ===== Worker input canvas (640×640) */ (640×640) ===== */
   const tmp = document.createElement('canvas');
   tmp.width = tmp.height = 640;
   const tctx = tmp.getContext('2d');
