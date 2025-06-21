@@ -35,3 +35,17 @@ h1 {
   color: white;
   z-index: 10;
 }
+
+/* 4:3 フレームを中央配置し、外側は黒 */
+#wrap {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  background: black;          /* マスクのベース色 */
+  overflow: hidden;
+}
+video, canvas {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%); /* 真ん中に揃える */
+}
