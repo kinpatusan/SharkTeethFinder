@@ -1,8 +1,8 @@
 // script.js – Shark Tooth Detector PWA (UI thread)
 // -----------------------------------------------------------------------------
-// 2025‑06‑23  Portrait‑center **COMPLETE**
-//   • 4:3 プレビュー中央寄せ + 高 FPS
-//   • 全構文を完結させ、Initializing… で止まる問題を修正
+// 2025‑06‑24  Stable portrait build
+//   • 左右フル幅 & 上下暗帯固定
+//   • 重大な重複行 / タイプミスを削除 → 初期化で停止する問題を解消
 // -----------------------------------------------------------------------------
 (() => {
   /* ===== DOM ===== */
@@ -11,12 +11,10 @@
   const status = document.getElementById('status');
   const ctx    = canvas.getContext('2d');
 
-  const maskL = document.getElementById('maskL');
-  const maskR = document.getElementById('maskR');
   const maskT = document.getElementById('maskT');
   const maskB = document.getElementById('maskB');
 
-  /* ===== UI (slider & camera select) ===== */
+  /* ===== UI (slider & camera) ===== */
   const ui = document.createElement('div');
   Object.assign(ui.style, {
     position:'fixed',top:'8px',left:'50%',transform:'translateX(-50%)',
@@ -35,53 +33,44 @@
 
   /* ===== Worker ===== */
   const wk = new Worker('worker.js');
-  let workerReady = false;
-  wk.onmessage = e => {
-    if(e.data.type === 'ready') {
-      workerReady = true;
-      status.textContent = 'Ready';
-    } else if(e.data.type === 'bbox') {
-      lastBoxes = new Float32Array(e.data.boxes);
-      pending = false;
-    }
+  let workerReady=false;
+  wk.onmessage=e=>{
+    if(e.data.type==='ready'){workerReady=true;status.textContent='Ready';}
+    else if(e.data.type==='bbox'){lastBoxes=new Float32Array(e.data.boxes);pending=false;}
   };
-  wk.postMessage({ type:'init', modelUrl:'best.onnx', numThreads:2 });
+  wk.postMessage({type:'init',modelUrl:'best.onnx',numThreads:2});
 
-  /* ===== Camera helpers ===== */
-  let currentStream = null;
+  /* ===== Camera ===== */
+  let currentStream=null;
   async function listCams(){
     return (await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');
   }
   async function populateCamSel(){
-    const cams = await listCams();
-    const rear = cams.filter(c=>/rear|back|背面/i.test(c.label));
-    const wide = rear[0] || cams[0];
-    const ultra= rear.find(c=>/ultra[- ]?wide|超広角/i.test(c.label));
+    const cams=await listCams();
+    const rear=cams.filter(c=>/rear|back|背面/i.test(c.label));
+    const wide=rear[0]||cams[0];
+    const ultra=rear.find(c=>/ultra[- ]?wide|超広角/i.test(c.label));
     camSel.innerHTML='';
     const add=(c,l)=>{if(!c)return;const o=document.createElement('option');o.value=c.deviceId;o.textContent=l;camSel.appendChild(o);} ;
     add(wide,'背面カメラ'); add(ultra,'背面超広角');
-    camSel.disabled = camSel.options.length<=1;
+    camSel.disabled=camSel.options.length<=1;
   }
   async function setupCamera(deviceId){
     if(currentStream) currentStream.getTracks().forEach(t=>t.stop());
-    const constr = deviceId?{video:{deviceId:{exact:deviceId}},audio:false}:{video:{facingMode:'environment'},audio:false};
-    currentStream = await navigator.mediaDevices.getUserMedia(constr);
-    video.srcObject = currentStream;
+    const constr=deviceId?{video:{deviceId:{exact:deviceId}},audio:false}:{video:{facingMode:'environment'},audio:false};
+    currentStream=await navigator.mediaDevices.getUserMedia(constr);
+    video.srcObject=currentStream;
     await video.play();
-    updateLayout(video.videoWidth, video.videoHeight);
+    updateLayout(video.videoWidth,video.videoHeight);
   }
-  camSel.onchange = async e => {
-    status.textContent = 'Switching…';
-    await setupCamera(e.target.value);
-    status.textContent = 'Ready';
-  };
+  camSel.onchange=async e=>{status.textContent='Switching…';await setupCamera(e.target.value);status.textContent='Ready';};
 
   /* ===== Layout & mask ===== */
-  let lastKey='';
+  let lastGeom='';
   function updateLayout(sw,sh){
     if(!sw||!sh) return null;
 
-    // 1. canvas size (4:3) – fills device width in portrait, height in landscape
+    // 1. canvas: 4:3, width‑fit in portrait (so dark bands top/bottom)
     if(window.innerWidth < window.innerHeight){
       canvas.width  = window.innerWidth;
       canvas.height = Math.round(canvas.width * 3 / 4);
@@ -90,42 +79,31 @@
       canvas.width  = Math.round(canvas.height * 4 / 3);
     }
 
-    // 2. vertical centering of whole preview area
-    const offsetY = Math.max((window.innerHeight - canvas.height) / 2, 0);
-    canvas.style.top = `${offsetY}px`;
+    // 2. vertical center entire preview
+    const offsetY=Math.max((window.innerHeight-canvas.height)/2,0);
+    canvas.style.top=`${offsetY}px`;
 
-    // 3. **Always fit by width** so video fully spans left‑right (dark bands top/bottom only)
-    const sUI = canvas.width / sw;
-    const dw  = canvas.width;
-    const dh  = sh * sUI;
-    const dx  = 0;
-    const dy  = (canvas.height - dh) / 2;
+    // 3. inner mapping (video → canvas)
+    const sUI=canvas.width/sw;
+    const dh = sh * sUI;
+    const dy = (canvas.height - dh) / 2;
 
-    // 4. Mask update only if geometry changed
-    const key = `${dy}|${dh}|${canvas.height}|${offsetY}`;
-    if(key !== lastKey){
-      const fullH = window.innerHeight;
-      // Left / right masks hidden
-      maskL.style.cssText = 'display:none;';
-      maskR.style.cssText = 'display:none;';
-      // Top mask
-      maskT.style.cssText = `display:block;left:0;top:0;width:${canvas.width}px;height:${offsetY+dy}px;background:rgba(0,0,0,.45);position:fixed;pointer-events:none;z-index:999;`;
-      // Bottom mask
-      maskB.style.cssText = `display:block;left:0;top:${offsetY+dy+dh}px;width:${canvas.width}px;height:${fullH-(offsetY+dy+dh)}px;background:rgba(0,0,0,.45);position:fixed;pointer-events:none;z-index:999;`;
-      lastKey = key;
+    // 4. update top/bottom masks once
+    const key=`${dy}|${dh}|${canvas.height}|${offsetY}`;
+    if(key!==lastGeom){
+      const fullH=window.innerHeight;
+      maskT.style.cssText=`left:0;top:0;width:${canvas.width}px;height:${offsetY+dy}px;background:rgba(0,0,0,.45);position:fixed;pointer-events:none;z-index:999;`;
+      maskB.style.cssText=`left:0;top:${offsetY+dy+dh}px;width:${canvas.width}px;height:${fullH-(offsetY+dy+dh)}px;background:rgba(0,0,0,.45);position:fixed;pointer-events:none;z-index:999;`;
+      lastGeom=key;
     }
-    return { dx:0, dy, sUI };
+    return {sUI,dy};
   }
-  window.addEventListener('resize', ()=>updateLayout(video.videoWidth, video.videoHeight));
+  window.addEventListener('resize',()=>updateLayout(video.videoWidth,video.videoHeight));
 
-  /* ===== Worker input canvas (640×640) */('resize',()=>updateLayout(video.videoWidth,video.videoHeight));
-
-  /* ===== Worker input canvas (640×640) */ (640×640) ===== */
-  const tmp = document.createElement('canvas');
-  tmp.width = tmp.height = 640;
-  const tctx = tmp.getContext('2d');
+  /* ===== Worker input canvas (640×640) ===== */
+  const tmp=document.createElement('canvas');tmp.width=tmp.height=640;const tctx=tmp.getContext('2d');
   function drawLetterbox(){
-    const sw=video.videoWidth, sh=video.videoHeight;
+    const sw=video.videoWidth,sh=video.videoHeight;
     const s=Math.min(640/sw,640/sh);
     const dw=sw*s, dh=sh*s;
     const dx=(640-dw)/2, dy=(640-dh)/2;
@@ -133,62 +111,31 @@
   }
 
   /* ===== Render loop ===== */
-  let pending=false, lastBoxes=null;
+  let pending=false,lastBoxes=null;
   async function loop(){
     if(video.readyState>=2 && workerReady){
       const sw=video.videoWidth, sh=video.videoHeight;
-      const layout = updateLayout(sw,sh);
+      const layout=updateLayout(sw,sh);
       if(layout){
-        const {dx,dy,sUI} = layout;
-
+        const {sUI,dy}=layout;
         // send frame to worker
-        if(!pending){
-          drawLetterbox();
-          const bmp = await createImageBitmap(tmp);
-          wk.postMessage({type:'frame', bitmap:bmp}, [bmp]);
-          pending = true;
-        }
-
-        // draw background (cover)
-        const sCover = Math.max(canvas.width/sw, canvas.height/sh);
+        if(!pending){drawLetterbox();const bmp=await createImageBitmap(tmp);wk.postMessage({type:'frame',bitmap:bmp},[bmp]);pending=true;}
+        // background cover
+        const sCover=Math.max(canvas.width/sw,canvas.height/sh);
         const dwC=sw*sCover, dhC=sh*sCover;
         ctx.drawImage(video,0,0,sw,sh,(canvas.width-dwC)/2,(canvas.height-dhC)/2,dwC,dhC);
-
-        // draw boxes
-        if(lastBoxes){
-          const arr = lastBoxes;
-          const sL=Math.min(640/sw,640/sh);
-          const dwL=sw*sL, dhL=sh*sL;
-          const dxL=(640-dwL)/2, dyL=(640-dhL)/2;
-          ctx.lineWidth=3;
-          ctx.strokeStyle='red';
-          ctx.fillStyle='yellow';
-          ctx.font='14px sans-serif';
-          for(let i=0;i<arr.length;i+=6){
-            const conf = arr[i+4];
-            if(conf < TH) continue;
-            const vx1=(arr[i]   -dxL)/sL, vy1=(arr[i+1]-dyL)/sL;
-            const vx2=(arr[i+2]-dxL)/sL, vy2=(arr[i+3]-dyL)/sL;
-            const x1=dx+vx1*sUI, y1=dy+vy1*sUI;
-            const x2=dx+vx2*sUI, y2=dy+vy2*sUI;
-            ctx.strokeRect(x1,y1,x2-x1,y2-y1);
-            ctx.fillText((conf*100).toFixed(1)+'%', x1+4, y1+16);
-          }
-        }
-      }
+        // boxes
+        if(lastBoxes){const arr=lastBoxes;const sL=Math.min(640/sw,640/sh);const dwL=sw*sL,dhL=sh*sL;const dxL=(640-dwL)/2,dyL=(640-dhL)/2;ctx.lineWidth=3;ctx.strokeStyle='red';ctx.fillStyle='yellow';ctx.font='14px sans-serif';for(let i=0;i<arr.length;i+=6){const conf=arr[i+4];if(conf<TH)continue;const vx1=(arr[i]-dxL)/sL,vy1=(arr[i+1]-dyL)/sL;const vx2=(arr[i+2]-dxL)/sL,vy2=(arr[i+3]-dyL)/sL;const x1=vx1*sUI, x2=vx2*sUI, y1=dy+vy1*sUI, y2=dy+vy2*sUI;ctx.strokeRect(x1,y1,x2-x1,y2-y1);ctx.fillText((conf*100).toFixed(1)+'%',x1+4,y1+16);}}}
     }
     requestAnimationFrame(loop);
   }
 
   /* ===== Init ===== */
-  (async () => {
+  (async()=>{
     status.textContent='Requesting camera…';
-    try{
-      await setupCamera();
-    }catch(err){
-      status.textContent='Camera error'; console.error(err); return;}
+    try{await setupCamera();}catch(e){status.textContent='Camera error';console.error(e);return;}
     await populateCamSel();
-    status.textContent='Loading model…'; // worker will set Ready when done
+    status.textContent='Loading model…'; // set Ready in worker callback
     loop();
   })();
 })();
