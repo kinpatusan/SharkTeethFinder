@@ -19,7 +19,7 @@
   /* === UI === */
   const ui=document.createElement('div');
   Object.assign(ui.style,{position:'fixed',top:'8px',left:'50%',transform:'translateX(-50%)',background:'rgba(0,0,0,.55)',padding:'6px 12px',borderRadius:'8px',color:'#fff',fontSize:'14px',zIndex:1000,whiteSpace:'nowrap'});
-  ui.innerHTML=`TH: <span id="thrVal">0.65</span><input id="thr" type="range" min="0.10" max="0.90" step="0.05" value="0.65" style="width:120px;vertical-align:middle;">&nbsp;| Camera: <select id="camSel" style="background:#222;color:#fff;border-radius:4px;padding:2px 4px;"></select>`;
+  ui.innerHTML=`TH: <span id="thrVal">0.50</span><input id="thr" type="range" min="0.10" max="0.90" step="0.05" value="0.65" style="width:120px;vertical-align:middle;">&nbsp;| Camera: <select id="camSel" style="background:#222;color:#fff;border-radius:4px;padding:2px 4px;"></select>`;
   document.body.appendChild(ui);
   const slider=document.getElementById('thr');
   const sliderVal=document.getElementById('thrVal');
