@@ -71,26 +71,24 @@
     scale:1, offsetX:0, offsetY:0, detectTop:0,
     update(sw,sh){
       if(!sw||!sh) return;
-      // 1) canvas 縦長 4:3 （幅基準）
+      // 1) canvas をビューポート全面に (上下の真っ黒を解消)
       canvas.width  = window.innerWidth;
-      canvas.height = Math.round(canvas.width * 4 / 3);
-      if(canvas.height > window.innerHeight){ // 画面に収まらないときは高さ基準で再計算
-        canvas.height = window.innerHeight;
-        canvas.width  = Math.round(canvas.height * 3 / 4);
-      }
-      // 2) キャンバス全体を縦中央へ
-      const canvOffY=Math.max((window.innerHeight-canvas.height)/2,0);
-      canvas.style.top=`${canvOffY}px`;
-      // 3) video → canvas 変換（横幅フィット）
-      this.scale = canvas.width / sw; // ★ widthFit
-      this.offsetX = 0;
-      this.offsetY = (canvas.height - sh*this.scale) / 2;
-      // 4) 検知正方形 top
-      this.detectTop = (canvas.height - canvas.width) / 2;
-      // 5) マスク更新（上下のみ）
-      const fullH=window.innerHeight;
-      maskT.style.cssText=`left:0;top:0;width:${canvas.width}px;height:${canvOffY+this.detectTop}px;background:rgba(0,0,0,.45);position:fixed;pointer-events:none;z-index:999;`;
-      maskB.style.cssText=`left:0;top:${canvOffY+this.detectTop+canvas.width}px;width:${canvas.width}px;height:${fullH-(canvOffY+this.detectTop+canvas.width)}px;background:rgba(0,0,0,.45);position:fixed;pointer-events:none;z-index:999;`;
+      canvas.height = window.innerHeight;
+      canvas.style.top = '0px';
+
+      // 2) video → canvas : cover (全面に映像を敷き詰める)
+      this.scale = Math.max(canvas.width/sw, canvas.height/sh);
+      const drawnW = sw * this.scale;
+      const drawnH = sh * this.scale;
+      this.offsetX = (canvas.width  - drawnW)/2;
+      this.offsetY = (canvas.height - drawnH)/2;
+
+      // 3) 検知正方形 (幅いっぱい 1:1)
+      this.detectTop = (canvas.height - canvas.width)/2;
+
+      // 4) マスク更新（正方形の上下のみ半透明）
+      maskT.style.cssText=`left:0;top:0;width:${canvas.width}px;height:${this.offsetY + this.detectTop}px;background:rgba(0,0,0,.45);position:fixed;pointer-events:none;z-index:999;`;top:0;width:${canvas.width}px;height:${this.detectTop}px;background:rgba(0,0,0,.45);position:fixed;pointer-events:none;z-index:999;`;
+      maskB.style.cssText=`left:0;top:${this.offsetY + this.detectTop + canvas.width}px;width:${canvas.width}px;height:${canvas.height - (this.offsetY + this.detectTop + canvas.width)}px;background:rgba(0,0,0,.45);position:fixed;pointer-events:none;z-index:999;`;top:${this.detectTop+canvas.width}px;width:${canvas.width}px;height:${canvas.height-(this.detectTop+canvas.width)}px;background:rgba(0,0,0,.45);position:fixed;pointer-events:none;z-index:999;`;
     }
   };
   window.addEventListener('resize',()=>layout.update(video.videoWidth,video.videoHeight));
