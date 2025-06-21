@@ -3,6 +3,7 @@
 // 2025‑06‑25  Portrait 4:3 full‑width, 1:1 detect, top/bottom mask – FINAL
 // Camera labels: 2× (tele) / 1× (ultra‑wide) and default to 1×
 // 2025‑06‑26  🛠 Fix: message type mismatch (box→bbox) & frame payload (image→bitmap)
+// 2025‑06‑27  🩹 Hot‑fix: iOS Safari blank preview – fallback to createImageBitmap
 // -----------------------------------------------------------------------------
 (() => {
   /* === DOM === */
@@ -39,7 +40,7 @@
     if (e.data.type === 'ready') {
       workerReady = true;
       status.textContent = 'Ready';
-    } else if (e.data.type === 'bbox') {          // <‑‑ fixed (was "box")
+    } else if (e.data.type === 'bbox') {
       lastBoxes = new Float32Array(e.data.boxes);
       pending = false;
     }
@@ -56,7 +57,6 @@
     const cams = await listCams();
     camSel.innerHTML = '';
 
-    // Identify rear‑wide (≈2×) / ultra‑wide (≈1×) by label, fallback to first two cams
     let rear = null, ultra = null;
     cams.forEach(c => {
       const l = c.label;
@@ -69,10 +69,9 @@
     const add = (c, l) => {
       if (!c) return; const o = document.createElement('option'); o.value = c.deviceId; o.textContent = l; camSel.appendChild(o);
     };
-    add(rear,  '2×');   // formerly 背面カメラ
-    add(ultra, '1×');   // formerly 背面超広角
+    add(rear,  '2×');   // tele
+    add(ultra, '1×');   // ultra‑wide
 
-    // default to 1× if present
     const idx1x = Array.from(camSel.options).findIndex(o => o.textContent === '1×');
     camSel.selectedIndex = idx1x !== -1 ? idx1x : 0;
     camSel.disabled = camSel.options.length <= 1;
@@ -84,10 +83,11 @@
       currentStream = null;
     }
     try {
-      const constraints = deviceId ? { video: { deviceId: { exact: deviceId } }, audio: false }
+      const constraints = deviceId ? { video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false }
                                     : { video: { facingMode: { exact: 'environment' } }, audio: false };
       currentStream = await navigator.mediaDevices.getUserMedia(constraints);
       video.srcObject = currentStream;
+      video.setAttribute('playsinline', 'true');
       await video.play();
       layout.update(video.videoWidth, video.videoHeight);
     } catch (err) {
@@ -107,17 +107,16 @@
     update(w, h) {
       if (!w || !h) return;
       const vw = window.innerWidth, vh = window.innerHeight;
-      const aspect = 3 / 4; // portrait 3:4
+      const aspect = 3 / 4;
       const fitW = vw, fitH = vw / aspect;
       this.scale = fitW / w;
       this.offsetX = 0;
       this.offsetY = (vh - fitH) / 2;
-      this.detectTop = this.offsetY + (fitH - 640 * this.scale) / 2; // assuming 640×640 model input
+      this.detectTop = this.offsetY + (fitH - 640 * this.scale) / 2;
       canvas.width = vw; canvas.height = vh;
     },
     clear() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      // grey out top / bottom outside detect area
       ctx.fillStyle = 'rgba(0,0,0,0.45)';
       ctx.fillRect(0, 0, canvas.width, this.detectTop);
       ctx.fillRect(0, this.detectTop + 640 * this.scale, canvas.width, canvas.height - (this.detectTop + 640 * this.scale));
@@ -129,12 +128,22 @@
   const tmp = document.createElement('canvas');
   tmp.width = tmp.height = 640;
   const tctx = tmp.getContext('2d');
-  function feedWorker() {
+  async function feedWorker() { // <‑‑ now async for fallback path
     const sw = video.videoWidth, sh = video.videoHeight;
     if (!sw || !sh) return;
     tctx.drawImage(video, 0, 0, sw, sh, 0, 0, 640, 640);
-    const bmp = tmp.transferToImageBitmap();              // <‑‑ new
-    wk.postMessage({ type: 'frame', bitmap: bmp }, [bmp]); // <‑‑ fixed (was image)
+    let bmp;
+    if (tmp.transferToImageBitmap) {
+      try {
+        bmp = tmp.transferToImageBitmap();
+      } catch (err) {
+        // Safari 17+ supports transferToImageBitmap but fallback for older devices
+        bmp = await createImageBitmap(tmp);
+      }
+    } else {
+      bmp = await createImageBitmap(tmp);
+    }
+    wk.postMessage({ type: 'frame', bitmap: bmp }, [bmp]);
   }
 
   /* === Render loop === */
@@ -143,7 +152,7 @@
     if (!lastBoxes) return;
     const s = layout.scale;
     for (let i = 0; i < lastBoxes.length; i += 5) {
-      const [x1, y1, x2, y2, score] = lastBoxes.slice(i, i + 5);
+      const x1 = lastBoxes[i], y1 = lastBoxes[i + 1], x2 = lastBoxes[i + 2], y2 = lastBoxes[i + 3], score = lastBoxes[i + 4];
       if (score < TH) continue;
       ctx.strokeStyle = '#0f0'; ctx.lineWidth = 2;
       ctx.strokeRect(x1 * s + layout.offsetX, y1 * s + layout.offsetY, (x2 - x1) * s, (y2 - y1) * s);
@@ -165,7 +174,7 @@
     status.textContent = 'Requesting camera…';
     try {
       await populateCamSel();
-      await setupCamera(camSel.value); // start with default (1× if present)
+      await setupCamera(camSel.value);
     } catch (err) {
       console.error(err);
       status.textContent = 'Camera permission denied';
