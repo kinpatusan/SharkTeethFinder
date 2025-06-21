@@ -1,51 +1,52 @@
-body {
-  margin: 0;
-  overflow: hidden;
-  background: black;
-  font-family: sans-serif;
-  color: white;
-  text-align: center;
+/* style.css – Shark Tooth Detector PWA (CSS‑mask version) ------------------ */
+/* 2025‑06‑22  完全版 – 余計な上書きを整理・統合                        */
+
+/* ===== 1. 画面リセット軽量版 ============================================ */
+html,body{
+  margin:0;
+  padding:0;
+  height:100%;
+  background:#000;                 /* 読み込み中も黒背景でフラッシュ防止 */
+  font-family:system-ui, sans-serif;
+  overscroll-behavior:none;        /* モバイルでプルダウンリロード無効化 */
 }
 
-h1 {
-  position: absolute;
-  top: 0;
-  width: 100vw;
-  background: rgba(0, 0, 0, 0.6);
-  padding: 10px;
-  font-size: 1.5em;
-  z-index: 10;
+/* ===== 2. ビデオ & キャンバス =========================================== */
+#cam{ display:none; }              /* <video> を隠して <canvas> のみ表示 */
+
+#view{
+  position:fixed;
+  top:0; left:0;                   /* 4:3 枠内に収まるサイズは JS が計算 */
+  image-rendering:pixelated;       /* 低解像度でもシャープに描画           */
 }
 
-#video, #canvas {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  object-fit: cover;
+/* ===== 3. 半透明マスク (左右上下 4 枚共通) ============================== */
+.mask{
+  position:fixed;
+  background:rgba(0,0,0,.45);      /* 透過度はここで一括調整             */
+  pointer-events:none;             /* タッチ・クリックを透過             */
+  z-index:999;                     /* UI より下, キャンバスより上         */
 }
 
-#status {
-  position: absolute;
-  bottom: 10px;
-  width: 100vw;
-  text-align: center;
-  font-size: 1.2em;
-  color: white;
-  z-index: 10;
+/* ===== 4. ステータス表示 =============================================== */
+#status{
+  position:fixed;
+  bottom:8px; left:50%; transform:translateX(-50%);
+  color:#fff; background:rgba(0,0,0,.55); padding:4px 10px;
+  border-radius:8px; font-size:14px; z-index:1000;
 }
 
-/* 4:3 フレームを中央配置し、外側は黒 */
-#wrap {
-  position: relative;
-  width: 100vw;
-  height: 100vh;
-  background: black;          /* マスクのベース色 */
-  overflow: hidden;
+/* ===== 5. レンジスライダー (モバイル視認性アップ) ======================= */
+input[type="range"]::-webkit-slider-thumb{
+  appearance:none; width:18px; height:18px; border-radius:50%;
+  background:#ffb400; border:none; box-shadow:0 0 2px #000;
 }
-video, canvas {
-  position: absolute;
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%); /* 真ん中に揃える */
+input[type="range"]::-moz-range-thumb{
+  width:18px; height:18px; border-radius:50%;
+  background:#ffb400; border:none;
+}
+
+/* スライダー溝 */
+input[type="range"]{
+  accent-color:#ffb400;
 }
