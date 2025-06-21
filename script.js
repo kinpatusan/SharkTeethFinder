@@ -1,38 +1,22 @@
 // script.js – UI thread (worker‑based) for Shark Tooth Detector PWA
 // -----------------------------------------------------------------------------
-// 2025‑06‑22  Clean CSS‑mask version (single definition)
-//   • 4:3 live preview      – 明視領域だけ明るく表示
-//   • CSS <div.mask> ×4    – 枠外は半透明で暗転（映像は残す）
-//   • オフスクリーン worker – YOLOv12n (best.onnx) 推論
-//   • 高 FPS / 低消費電力 – fillRect を使わず描画 1 枚のみ
+// 2025‑06‑23  Portrait‑center update (fixed aspect)
+//   • 4:3 プレビューを画面中央に縦センタリング
+//   • 高さ計算を width * 3 / 4 に修正 (本来の 4:3 比率)
 // -----------------------------------------------------------------------------
-// HTML 必須要素（index.html 内）：
-//   <video id="cam" hidden></video>
-//   <canvas id="view"></canvas>
-//   <div class="mask" id="maskL"></div>
-//   <div class="mask" id="maskR"></div>
-//   <div class="mask" id="maskT"></div>
-//   <div class="mask" id="maskB"></div>
-//   <p id="status">Initializing…</p>
-// style.css に必須：
-//   .mask{position:fixed;background:rgba(0,0,0,.45);pointer-events:none;z-index:999;}
-// 外部ファイル：worker.js / ort-web.min.js / best.onnx
-// -----------------------------------------------------------------------------
-
 (() => {
-  // === DOM 取得 ==============================================================
+  /* ───────── DOM ───────── */
   const video  = document.getElementById('cam');
   const canvas = document.getElementById('view');
   const status = document.getElementById('status');
   const ctx    = canvas.getContext('2d');
 
-  // CSS マスク 4 枚（左右上下）
   const maskL = document.getElementById('maskL');
   const maskR = document.getElementById('maskR');
   const maskT = document.getElementById('maskT');
   const maskB = document.getElementById('maskB');
 
-  // === UI （しきい値スライダー & カメラ選択）===============================
+  /* ───────── UI (TH slider & camera select) ───────── */
   const ui = document.createElement('div');
   Object.assign(ui.style, {
     position:'fixed',top:'8px',left:'50%',transform:'translateX(-50%)',
@@ -43,151 +27,99 @@
     <input id="thr" type="range" min="0.10" max="0.90" step="0.05" value="0.65" style="width:120px;vertical-align:middle;">
     &nbsp;| Camera: <select id="camSel" style="background:#222;color:#fff;border-radius:4px;padding:2px 4px;"></select>`;
   document.body.appendChild(ui);
-  const slider   = document.getElementById('thr');
-  const sliderVal= document.getElementById('thrVal');
-  const camSel   = document.getElementById('camSel');
+  const slider=document.getElementById('thr');
+  const sliderVal=document.getElementById('thrVal');
+  const camSel=document.getElementById('camSel');
+  let TH=0.65; slider.oninput=e=>{TH=+e.target.value;sliderVal.textContent=TH.toFixed(2);};
 
-  let TH = 0.65;
-  slider.oninput = e => { TH = +e.target.value; sliderVal.textContent = TH.toFixed(2); };
-
-  // === Worker 初期化 =========================================================
-  const wk = new Worker('worker.js');
-  let workerReady = false;
-  wk.onmessage = e => {
-    if (e.data.type === 'ready') {
-      workerReady = true;
-      status.textContent = 'Ready';
-    } else if (e.data.type === 'bbox') {
-      lastBoxes = new Float32Array(e.data.boxes);
-      pending   = false;
-    }
+  /* ───────── Worker setup ───────── */
+  const wk=new Worker('worker.js');
+  let workerReady=false;
+  wk.onmessage=e=>{
+    if(e.data.type==='ready'){workerReady=true;status.textContent='Ready';}
+    else if(e.data.type==='bbox'){lastBoxes=new Float32Array(e.data.boxes);pending=false;}
   };
-  wk.postMessage({ type:'init', modelUrl:'best.onnx', numThreads:2 });
+  wk.postMessage({type:'init',modelUrl:'best.onnx',numThreads:2});
 
-  // === カメラ選択 & 起動 =====================================================
-  let currentStream = null;
-
-  async function listCams(){
-    const all = await navigator.mediaDevices.enumerateDevices();
-    return all.filter(d=>d.kind==='videoinput');
-  }
-
+  /* ───────── Camera helpers ───────── */
+  let currentStream=null;
+  async function listCams(){return(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');}
   async function populateCamSel(){
-    const cams = await listCams();
-    const rear = cams.filter(c=>/rear|back|背面/i.test(c.label));
-    const wide = rear[0] || cams[0];
-    const ultra= rear.find(c=>/ultra[- ]?wide|超広角/i.test(c.label));
+    const cams=await listCams();
+    const rear=cams.filter(c=>/rear|back|背面/i.test(c.label));
+    const wide=rear[0]||cams[0];
+    const ultra=rear.find(c=>/ultra[- ]?wide|超広角/i.test(c.label));
     camSel.innerHTML='';
-    const addOpt=(c,l)=>{ if(!c) return; const o=document.createElement('option');o.value=c.deviceId;o.textContent=l;camSel.appendChild(o);} ;
-    addOpt(wide,'背面カメラ'); addOpt(ultra,'背面超広角');
-    camSel.disabled = camSel.options.length<=1;
+    const add=(c,l)=>{if(!c)return;const o=document.createElement('option');o.value=c.deviceId;o.textContent=l;camSel.appendChild(o);} ;
+    add(wide,'背面カメラ'); add(ultra,'背面超広角');
+    camSel.disabled=camSel.options.length<=1;
   }
-
   async function setupCamera(deviceId){
-    if(currentStream) currentStream.getTracks().forEach(t=>t.stop());
-    const constr = deviceId ? { video:{deviceId:{exact:deviceId}},audio:false }
-                            : { video:{facingMode:'environment'},audio:false };
-    currentStream = await navigator.mediaDevices.getUserMedia(constr);
-    video.srcObject = currentStream;
+    if(currentStream)currentStream.getTracks().forEach(t=>t.stop());
+    const constr=deviceId?{video:{deviceId:{exact:deviceId}},audio:false}:{video:{facingMode:'environment'},audio:false};
+    currentStream=await navigator.mediaDevices.getUserMedia(constr);
+    video.srcObject=currentStream;
     await video.play();
-    updateLayout(video.videoWidth, video.videoHeight);
+    updateLayout(video.videoWidth,video.videoHeight);
   }
+  camSel.onchange=async e=>{status.textContent='Switching…';await setupCamera(e.target.value);status.textContent='Ready';};
 
-  camSel.onchange = async e => { status.textContent='Switching…'; await setupCamera(e.target.value); status.textContent='Ready'; };
-
-  // === レイアウト計算 & CSS マスク位置更新 ================================
+  /* ───────── Layout & mask ───────── */
   let lastKey='';
   function updateLayout(sw,sh){
     if(!sw||!sh) return null;
-    // canvas サイズ (4:3)
+
+    // 1) canvas サイズ (4:3)
     if(window.innerWidth < window.innerHeight){
       canvas.width  = window.innerWidth;
-      canvas.height = Math.round(canvas.width*3/4);
-    } else {
+      canvas.height = Math.round(canvas.width * 3 / 4); // ★ 正しい 4:3 比率
+    }else{
       canvas.height = window.innerHeight;
-      canvas.width  = Math.round(canvas.height*4/3);
+      canvas.width  = Math.round(canvas.height * 4 / 3);
     }
 
-    const sUI = Math.min(canvas.width/sw, canvas.height/sh);
-    const dw  = sw*sUI, dh = sh*sUI;
-    const dx  = (canvas.width - dw)/2;
-    const dy  = (canvas.height- dh)/2;
+    // 2) 画面中央に縦方向オフセット
+    const offsetY=Math.max((window.innerHeight - canvas.height)/2,0);
+    canvas.style.top=`${offsetY}px`;
 
-    const key = `${dx}|${dy}|${dw}|${dh}|${canvas.width}|${canvas.height}`;
+    // 3) 4:3 内枠サイズ
+    const sUI=Math.min(canvas.width/sw, canvas.height/sh);
+    const dw=sw*sUI, dh=sh*sUI;
+    const dx=(canvas.width - dw)/2;
+    const dy=(canvas.height- dh)/2;
+
+    // 4) マスク位置（必要時のみ更新）
+    const key=`${dx}|${dy}|${dw}|${dh}|${canvas.width}|${canvas.height}|${offsetY}`;
     if(key!==lastKey){
-      maskL.style.cssText = `left:0;top:0;width:${dx}px;height:100vh;`;
-      maskR.style.cssText = `left:${dx+dw}px;top:0;width:${canvas.width-dx-dw}px;height:100vh;`;
-      maskT.style.cssText = `left:${dx}px;top:0;width:${dw}px;height:${dy}px;`;
-      maskB.style.cssText = `left:${dx}px;top:${dy+dh}px;width:${dw}px;height:${canvas.height-dy-dh}px;`;
-      lastKey = key;
+      const fullH=window.innerHeight;
+      maskL.style.cssText=`left:0;top:0;width:${dx}px;height:${fullH}px;`;
+      maskR.style.cssText=`left:${dx+dw}px;top:0;width:${canvas.width-dx-dw}px;height:${fullH}px;`;
+      maskT.style.cssText=`left:${dx}px;top:0;width:${dw}px;height:${offsetY+dy}px;`;
+      maskB.style.cssText=`left:${dx}px;top:${offsetY+dy+dh}px;width:${dw}px;height:${fullH-(offsetY+dy+dh)}px;`;
+      lastKey=key;
     }
-    return { dx,dy,dw,dh,sUI };
+    return {dx,dy,dw,dh,sUI};
   }
-  window.addEventListener('resize', ()=>updateLayout(video.videoWidth, video.videoHeight));
+  window.addEventListener('resize',()=>updateLayout(video.videoWidth,video.videoHeight));
 
-  // === worker 入力用 640×640 レターボックスキャンバス ======================
-  const tmp = document.createElement('canvas');
-  tmp.width = tmp.height = 640;
-  const tctx = tmp.getContext('2d');
-  function drawLetterbox(){
-    const sw=video.videoWidth, sh=video.videoHeight;
-    const s=Math.min(640/sw,640/sh);
-    const dw=sw*s, dh=sh*s;
-    const dx=(640-dw)/2, dy=(640-dh)/2;
-    tctx.drawImage(video,0,0,sw,sh,dx,dy,dw,dh);
-  }
+  /* ───────── Worker input canvas (640×640) ───────── */
+  const tmp=document.createElement('canvas');tmp.width=tmp.height=640;const tctx=tmp.getContext('2d');
+  function drawLetterbox(){const sw=video.videoWidth,sh=video.videoHeight;const s=Math.min(640/sw,640/sh);const dw=sw*s,dh=sh*s;const dx=(640-dw)/2,dy=(640-dh)/2;tctx.drawImage(video,0,0,sw,sh,dx,dy,dw,dh);} 
 
-  // === 描画ループ ===========================================================
-  let pending=false, lastBoxes=null;
+  /* ───────── Render loop ───────── */
+  let pending=false,lastBoxes=null;
   async function loop(){
     if(video.readyState>=2 && workerReady){
-      const sw=video.videoWidth, sh=video.videoHeight;
-      const layout = updateLayout(sw,sh);
-      if(layout){
-        const {dx,dy,dw,dh,sUI}=layout;
-
-        // worker へフレーム
-        if(!pending){
-          drawLetterbox();
-          const bmp = await createImageBitmap(tmp);
-          wk.postMessage({type:'frame',bitmap:bmp},[bmp]);
-          pending=true;
-        }
-
-        // 背景：カバー描画
+      const sw=video.videoWidth,sh=video.videoHeight;
+      const layout=updateLayout(sw,sh);
+      if(layout){const{dx,dy,dw,dh,sUI}=layout;
+        // worker へ
+        if(!pending){drawLetterbox();const bmp=await createImageBitmap(tmp);wk.postMessage({type:'frame',bitmap:bmp},[bmp]);pending=true;}
+        // 背景
         const sCover=Math.max(canvas.width/sw,canvas.height/sh);
         const dwC=sw*sCover, dhC=sh*sCover;
         ctx.drawImage(video,0,0,sw,sh,(canvas.width-dwC)/2,(canvas.height-dhC)/2,dwC,dhC);
-
-        // バウンディングボックス
-        if(lastBoxes){
-          const arr=lastBoxes;
-          const sL=Math.min(640/sw,640/sh);
-          const dwL=sw*sL, dhL=sh*sL;
-          const dxL=(640-dwL)/2, dyL=(640-dhL)/2;
-
-          ctx.lineWidth=3; ctx.strokeStyle='red'; ctx.fillStyle='yellow'; ctx.font='14px sans-serif';
-
-          for(let i=0;i<arr.length;i+=6){
-            const conf=arr[i+4]; if(conf<TH) continue;
-            const vx1=(arr[i]   -dxL)/sL, vy1=(arr[i+1]-dyL)/sL;
-            const vx2=(arr[i+2]-dxL)/sL, vy2=(arr[i+3]-dyL)/sL;
-            const x1=dx+vx1*sUI, y1=dy+vy1*sUI, x2=dx+vx2*sUI, y2=dy+vy2*sUI;
-            ctx.strokeRect(x1,y1,x2-x1,y2-y1);
-            ctx.fillText((conf*100).toFixed(1)+'%',x1+4,y1+16);
-          }
-        }
-      }
+        // BBox
+        if(lastBoxes){const arr=lastBoxes;const sL=Math.min(640/sw,640/sh);const dwL=sw*sL,dhL=sh*sL;const dxL=(640-dwL)/2,dyL=(640-dhL)/2;ctx.lineWidth=3;ctx.strokeStyle='red';ctx.fillStyle='yellow';ctx.font='14px sans-serif';for(let i=0;i<arr.length;i+=6){const conf=arr[i+4];if(conf<TH)continue;const vx1=(arr[i]-dxL)/sL,vy1=(arr[i+1]-dyL)/sL;const vx2=(arr[i+2]-dxL)/sL,vy2=(arr[i+3]-dyL)/sL;const x1=dx+vx1*sUI,y1=dy+vy1*sUI,x2=dx+vx2*sUI,y2=dy+vy2*sUI;ctx.strokeRect(x1,y1,x2-x1,y2-y1);ctx.fillText((conf*100).toFixed(1)+'%',x1+4,y1+16);}}}
     }
-    requestAnimationFrame(loop);
-  }
-
-  // === 初期化シーケンス =====================================================
-  (async () => {
-    status.textContent='Requesting camera…';
-    await setupCamera();
-    await populateCamSel();
-    status.textContent='Loading model…';
-    loop();
-  })();
-})();
+    requestAnimationFrame
