@@ -22,7 +22,7 @@ ort.env.wasm.wasmPaths = {
 };
 
 let session = null;
-let inputDims = [1, 3, 640, 640];
+let inputDims = [1, 3, 1088, 1088];
 
 self.onmessage = async (e) => {
   const { type } = e.data;
