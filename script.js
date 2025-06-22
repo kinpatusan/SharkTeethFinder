@@ -37,7 +37,7 @@
       workerReady=true;status.textContent='Ready';
     }else if(e.data.type==='bbox'){
       // Float32Array with [x1,y1,x2,y2,conf,cls,...]
-      lastBoxes=new Float32Array(e.data.boxes);
+      lastBoxes=new Float32Array(e.data.bbox);
       pending=false;
     }
   };
