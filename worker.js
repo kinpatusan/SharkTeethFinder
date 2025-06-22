@@ -1,21 +1,22 @@
-// worker.js – YOLO Inference Worker (WASM v1.22.0)
-// -----------------------------------------------
+// worker.js – YOLO Inference Worker (GPU with WASM Fallback)
+// -----------------------------------------------------------
 // Message protocol
-//   {type:'init', modelUrl:'best.onnx', numThreads:2}
+//   {type:'init', modelUrl:'best.onnx'} // numThreadsはGPU実行に不要
 //   {type:'frame', bitmap:ImageBitmap}
 //   → {type:'ready'}
 //   → {type:'bbox', boxes:Float32Array}
 
 importScripts('ort-web.min.js');
 
-// ▼ v1.22.0 では .wasm が /shark-pwa/ 直下の場合、パスを上書き
-// ▼ v1.22.0 : .wasm と併せて .mjs（ローダ）も動的 import される
+// ▼ ONNX Runtime Web v1.22.0
+// WASMファイルのパス設定は、WebGPU/WebGL(JSEP)バックエンドでも
+// 内部的に利用されるため、このまま維持します。
 ort.env.wasm.wasmPaths = {
-  // CPU WASM スレッド版
+  // CPU WASM スレッド版 (フォールバック用)
   'ort-wasm-simd-threaded.wasm': './ort-wasm-simd-threaded.wasm',
   'ort-wasm-simd-threaded.mjs' : './ort-wasm-simd-threaded.mjs',
 
-  // JSEP (WebGPU/WebNN) 版 – 使わない場合は 404 回避用にだけ置く
+  // JSEP (WebGPU/WebGL) 版
   'ort-wasm-simd-threaded.jsep.wasm': './ort-wasm-simd-threaded.jsep.wasm',
   'ort-wasm-simd-threaded.jsep.mjs' : './ort-wasm-simd-threaded.jsep.mjs'
 };
@@ -27,12 +28,31 @@ self.onmessage = async (e) => {
   const { type } = e.data;
 
   if (type === 'init') {
-    const { modelUrl, numThreads = 2 } = e.data;
-    session = await ort.InferenceSession.create(modelUrl, {
-      executionProviders: ['wasm'],
-      wasm: { simd: true, numThreads }
-    });
-    postMessage({ type: 'ready' });
+    // GPU実行ではnumThreadsは不要なため、メッセージから削除
+    const { modelUrl } = e.data;
+    try {
+      //【修正点①】実行バックエンドとして 'webgpu' を優先し、利用できない場合は 'webgl' を使用
+      session = await ort.InferenceSession.create(modelUrl, {
+        executionProviders: ['webgpu', 'webgl'],
+        graphOptimizationLevel: 'all' // パフォーマンス向上のため最適化を最大化
+      });
+      console.log(`Successfully created session with backend: ${session.executionProvider}`);
+      postMessage({ type: 'ready' });
+
+    } catch (error) {
+      console.error('Failed to create GPU session, falling back to WASM.', error);
+      //【修正点②】GPUでのセッション作成に失敗した場合、元のWASM実装にフォールバック
+      try {
+        session = await ort.InferenceSession.create(modelUrl, {
+          executionProviders: ['wasm'],
+          wasm: { simd: true, numThreads: 2 } // 元のコードと同じ設定
+        });
+        console.log(`Successfully created session with backend: ${session.executionProvider}`);
+        postMessage({ type: 'ready' });
+      } catch (wasmError) {
+        console.error('Failed to create WASM session as a fallback.', wasmError);
+      }
+    }
   }
 
   else if (type === 'frame') {
@@ -47,6 +67,7 @@ self.onmessage = async (e) => {
   }
 };
 
+// toTensor関数は前処理を行うもので、GPU/CPU共通で利用できるため変更不要です。
 function toTensor(bitmap) {
   const { width, height } = bitmap;
   const off = new OffscreenCanvas(width, height);

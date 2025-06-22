@@ -1,7 +1,8 @@
 // script.js – Shark‑tooth detector PWA (UI thread)
 // -----------------------------------------------------------------------------
-// 2025‑06‑25  Portrait 4:3 full‑width, 1:1 detect, top/bottom mask – FINAL
+// 2025-06-25  Portrait 4:3 full‑width, 1:1 detect, top/bottom mask – FINAL
 // Label update: rear cameras shown as 2× / 1×
+// Worker init: Removed numThreads for GPU execution.
 // -----------------------------------------------------------------------------
 (() => {
   /* === DOM === */
@@ -24,13 +25,14 @@
   const slider=document.getElementById('thr');
   const sliderVal=document.getElementById('thrVal');
   const camSel=document.getElementById('camSel');
-  let TH=0.65; slider.oninput=e=>{TH=+e.target.value;sliderVal.textContent=TH.toFixed(2);};
+  let TH=0.30; slider.oninput=e=>{TH=+e.target.value;sliderVal.textContent=TH.toFixed(2);};
 
   /* === Worker === */
   const wk=new Worker('worker.js');
   let workerReady=false;
   wk.onmessage=e=>{if(e.data.type==='ready'){workerReady=true;status.textContent='Ready';}else if(e.data.type==='bbox'){lastBoxes=new Float32Array(e.data.boxes);pending=false;}};
-  wk.postMessage({type:'init',modelUrl:'best.onnx',numThreads:2});
+  // 【修正】GPU実行のため numThreads の指定を削除
+  wk.postMessage({type:'init',modelUrl:'best.onnx'});
 
   /* === Camera helpers === */
   let currentStream=null;
@@ -62,11 +64,11 @@
   window.addEventListener('resize',()=>layout.update(video.videoWidth,video.videoHeight));
 
   /* === Worker input === */
-  const tmp=document.createElement('canvas');tmp.width=tmp.height=640;const tctx=tmp.getContext('2d');function drawLetterbox(){const sw=video.videoWidth,sh=video.videoHeight,s=Math.min(640/sw,640/sh);const dw=sw*s,dh=sh*s,dx=(640-dw)/2,dy=(640-dh)/2;tctx.drawImage(video,0,0,sw,sh,dx,dy,dw,dh);} 
+  const tmp=document.createElement('canvas');tmp.width=tmp.height=640;const tctx=tmp.getContext('2d');function drawLetterbox(){const sw=video.videoWidth,sh=video.videoHeight,s=Math.min(640/sw,640/sh);const dw=sw*s,dh=sh*s,dx=(640-dw)/2,dy=(640-dh)/2;tctx.drawImage(video,0,0,sw,sh,dx,dy,dw,dh);}
 
   /* === Render loop === */
   let pending=false,lastBoxes=null;
-  async function loop(){if(video.readyState>=2&&workerReady){const sw=video.videoWidth,sh=video.videoHeight;layout.update(sw,sh);if(!pending){drawLetterbox();const bmp=await createImageBitmap(tmp);wk.postMessage({type:'frame',bitmap:bmp},[bmp]);pending=true;}ctx.drawImage(video,0,0,sw,sh,layout.offsetX,layout.offsetY,sw*layout.scale,sh*layout.scale);if(lastBoxes){const sL=Math.min(640/sw,640/sh);const dwL=sw*sL,dhL=sh*sL,dxL=(640-dwL)/2,dyL=(640-dhL)/2;ctx.lineWidth=3;ctx.strokeStyle='red';ctx.fillStyle='yellow';ctx.font='14px sans-serif';for(let i=0;i<lastBoxes.length;i+=6){const conf=lastBoxes[i+4];if(conf<TH)continue;const vx1=(lastBoxes[i]-dxL)/sL,vy1=(lastBoxes[i+1]-dyL)/sL,vx2=(lastBoxes[i+2]-dxL)/sL,vy2=(lastBoxes[i+3]-dyL)/sL;const x1=layout.offsetX+vx1*layout.scale,x2=layout.offsetX+vx2*layout.scale,y1=layout.offsetY+vy1*layout.scale,y2=layout.offsetY+vy2*layout.scale;if(y1<layout.detectTop||y2>layout.detectTop+canvas.width)continue;ctx.strokeRect(x1,y1,x2-x1,y2-y1);ctx.fillText((conf*100).toFixed(1)+'%',x1+4,y1+16);}}}requestAnimationFrame(loop);} 
+  async function loop(){if(video.readyState>=2&&workerReady){const sw=video.videoWidth,sh=video.videoHeight;layout.update(sw,sh);if(!pending){drawLetterbox();const bmp=await createImageBitmap(tmp);wk.postMessage({type:'frame',bitmap:bmp},[bmp]);pending=true;}ctx.drawImage(video,0,0,sw,sh,layout.offsetX,layout.offsetY,sw*layout.scale,sh*layout.scale);if(lastBoxes){const sL=Math.min(640/sw,640/sh);const dwL=sw*sL,dhL=sh*sL,dxL=(640-dwL)/2,dyL=(640-dhL)/2;ctx.lineWidth=3;ctx.strokeStyle='red';ctx.fillStyle='yellow';ctx.font='14px sans-serif';for(let i=0;i<lastBoxes.length;i+=6){const conf=lastBoxes[i+4];if(conf<TH)continue;const vx1=(lastBoxes[i]-dxL)/sL,vy1=(lastBoxes[i+1]-dyL)/sL,vx2=(lastBoxes[i+2]-dxL)/sL,vy2=(lastBoxes[i+3]-dyL)/sL;const x1=layout.offsetX+vx1*layout.scale,x2=layout.offsetX+vx2*layout.scale,y1=layout.offsetY+vy1*layout.scale,y2=layout.offsetY+vy2*layout.scale;if(y1<layout.detectTop||y2>layout.detectTop+canvas.width)continue;ctx.strokeRect(x1,y1,x2-x1,y2-y1);ctx.fillText((conf*100).toFixed(1)+'%',x1+4,y1+16);}}}requestAnimationFrame(loop);}
 
   /* === Init === */
   (async()=>{status.textContent='Requesting camera…';
