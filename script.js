@@ -41,7 +41,7 @@
       pending=false;
     }
   };
-  wk.postMessage({type:'init',modelUrl:'teeth_v12n.onnx'});
+  wk.postMessage({type:'init',modelUrl:'best.onnx'});
 
   /* === Camera helpers === */
   let currentStream=null;
