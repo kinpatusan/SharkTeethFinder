@@ -8,6 +8,9 @@
 
 importScripts('ort-web.min.js');
 
++ort.env.webgl.pack = true;   // 1 pixel = RGBA 4 要素詰込で帯域削減
++ort.env.webgl.float16 = false; // 念のため OFF
+
 // ▼ ONNX Runtime Web v1.22.0
 // WASMファイルのパス設定は、WebGPU/WebGL(JSEP)バックエンドでも
 // 内部的に利用されるため、このまま維持します。
