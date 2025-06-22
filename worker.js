@@ -8,12 +8,6 @@
 
 importScripts('ort-web.min.js');
 
-// ── WebGL GPU を FP16 & “pack” モードで強制 ──
-ort.env.webgl.float16 = true;   // 16-bit 浮動小数点演算を許可
-ort.env.webgl.pack    = true;   // RGBA テクスチャ 1 ピクセルに 4 要素を格納して帯域削減
-
-
-
 // ▼ ONNX Runtime Web v1.22.0
 // WASMファイルのパス設定は、WebGPU/WebGL(JSEP)バックエンドでも
 // 内部的に利用されるため、このまま維持します。
