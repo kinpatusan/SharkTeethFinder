@@ -5,12 +5,15 @@
 <title>Redirecting…</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <script>
-const map = { 'ja':'/ja/', 'en':'/en/', 'fr':'/fr/', 'es':'/es/', 'de':'/de/', 'zh':'/zh-Hans/' };
-const pref = (navigator.language || 'en').toLowerCase();
-for (const k in map) {
-  if (pref.startsWith(k)) { location.replace(map[k]); break; }
-}
-setTimeout(()=>location.replace('/en/'), 800); // fallback
+(function(){
+  const map = { 'ja':'/ja/', 'en':'/en/', 'fr':'/fr/', 'es':'/es/', 'de':'/de/', 'zh':'/zh-Hans/' };
+  const pref = (navigator.language || '').toLowerCase();
+  for (const k in map) {
+    if (pref.startsWith(k)) { location.replace(map[k]); return; }
+  }
+  // fallback
+  location.replace('/en/');
+})();
 </script>
 <noscript>
 <meta http-equiv="refresh" content="0; URL=/en/">
