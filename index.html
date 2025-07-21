@@ -6,17 +6,17 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <script>
 (function(){
-  const map = { 'ja':'/ja/', 'en':'/en/', 'fr':'/fr/', 'es':'/es/', 'de':'/de/', 'zh':'/zh-Hans/' };
+  const map = { 'ja':'/SharkTeethFinder/ja/', 'en':'/SharkTeethFinder/en/', 'fr':'/SharkTeethFinder/fr/', 'es':'/SharkTeethFinder/es/', 'de':'/SharkTeethFinder/de/', 'zh':'/SharkTeethFinder/zh-Hans/' };
   const pref = (navigator.language || '').toLowerCase();
   for (const k in map) {
     if (pref.startsWith(k)) { location.replace(map[k]); return; }
   }
   // fallback
-  location.replace('/en/');
+  location.replace('/SharkTeethFinder/en/');
 })();
 </script>
 <noscript>
-<meta http-equiv="refresh" content="0; URL=/en/">
+<meta http-equiv="refresh" content="0; URL=/SharkTeethFinder/en/">
 </noscript>
 </head>
 <body>
