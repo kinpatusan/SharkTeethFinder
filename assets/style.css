@@ -1,8 +1,48 @@
-body {font-family: system-ui,-apple-system,Helvetica,Arial,sans-serif;
-      line-height:1.55; max-width:820px; margin:40px auto; padding:0 16px; color:#222;}
-h1,h2 {line-height:1.2}
-nav.lang {font-size:.85em; margin-bottom:1.2rem;}
-nav.lang a {margin-right:.6rem; text-decoration:none;}
-nav.lang a.active {font-weight:600; text-decoration:underline;}
-footer {margin-top:3rem; font-size:.75em; color:#555;}
-ul {padding-left:1.2rem;}
+/* ── 追加：Google Fonts で Permanent Marker を読み込み ─────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Permanent+Marker&display=swap');
+
+/* ── グローバル変数：見出し用フォントスタック ──────────────────────────── */
+:root{
+  /* iOS/macOS では MarkerFelt-Wide、それ以外は Permanent Marker にフォールバック */
+  --marker-font: "MarkerFelt-Wide", "Marker Felt", "Permanent Marker", cursive;
+}
+
+/* ── 本文（従来どおり） ─────────────────────────────────────────── */
+body{
+  font-family: system-ui, -apple-system, Helvetica, Arial, sans-serif;
+  line-height: 1.55;
+  max-width: 820px;
+  margin: 40px auto;
+  padding: 0 16px;
+  color: #222;
+}
+
+/* ── 見出しだけ手書きフォントに ──────────────────────────────── */
+h1, h2{
+  line-height: 1.2;
+  font-family: var(--marker-font);
+}
+
+/* ── ナビゲーション ─────────────────────────────────────────── */
+nav.lang{
+  font-size: .85em;
+  margin-bottom: 1.2rem;
+}
+nav.lang a{
+  margin-right: .6rem;
+  text-decoration: none;
+}
+nav.lang a.active{
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+/* ── フッタ & リスト ───────────────────────────────────────── */
+footer{
+  margin-top: 3rem;
+  font-size: .75em;
+  color: #555;
+}
+ul{
+  padding-left: 1.2rem;
+}
